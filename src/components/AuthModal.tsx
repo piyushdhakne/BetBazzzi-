@@ -22,68 +22,104 @@ export default function AuthModal({ onClose }: AuthModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) return;
+    const cleanUsername = username.trim();
+    if (!cleanUsername || !password) return;
+    
+    if (cleanUsername.includes('@')) {
+      setError('Please enter a Player ID (e.g. Player_99), not an email address.');
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError(null);
     try {
       if (isLogin) {
-        await login(username, password);
+        try {
+          await login(cleanUsername, password);
+        } catch (loginErr: any) {
+          // Special case: If logging in as Admin with correct pass fails, try registering as Admin
+          if (cleanUsername.toLowerCase() === 'admin' && password === 'Admin1234') {
+            await register(cleanUsername, password);
+          } else {
+            throw loginErr;
+          }
+        }
       } else {
-        await register(username, password);
+        await register(cleanUsername, password);
       }
       onClose();
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Authentication failed');
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('Email/Password auth is not enabled in Firebase Console.');
+      } else if (err.code === 'auth/invalid-credential') {
+        setError(isLogin ? 'Invalid ID or Secret Key. Please check your credentials or register as a new player.' : 'Invalid registration details. Ensure your Key is at least 6 characters.');
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('This Player ID is already taken. Please choose another one.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Secret Key must be at least 6 characters long.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Player ID is invalid. Please use letters and numbers only.');
+      } else {
+        setError(err.message || 'Authentication failed');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-md bg-zinc-950 border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+        className="w-full max-w-md bg-[#161616] border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl relative"
       >
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="font-display font-bold text-2xl">
-              {isLogin ? 'WELCOME BACK' : 'JOIN THE ELITE'}
-            </h2>
-            <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-gray-500">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-[#ff007b]/10 rounded-full blur-[60px] -mr-16 -mt-16"></div>
+        
+        <div className="p-8 md:p-12 relative z-10">
+          <div className="flex justify-between items-center mb-10">
+            <div className="space-y-1">
+               <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter leading-none">
+                 {isLogin ? 'SECURE' : 'JOIN THE'}<br/>
+                 <span className="text-[#ff007b]">{isLogin ? 'LOGIN' : 'ARCADE'}</span>
+               </h2>
+               <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                 {isLogin ? 'Enter your credentials' : 'Create your player ID'}
+               </p>
+            </div>
+            <button onClick={onClose} className="p-3 hover:bg-white/5 rounded-2xl text-gray-700 hover:text-white transition-all">
               <X className="w-6 h-6" />
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Player ID</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Player ID</label>
+              <div className="relative group">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-[#ff007b] transition-colors" />
                 <input 
                   type="text" 
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your ID"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-casino-gold/50 transition-colors"
+                  placeholder="e.g. Player_99"
+                  className="w-full bg-black border border-white/10 rounded-2xl py-5 pl-12 pr-4 text-sm font-bold text-white focus:outline-none focus:border-[#ff007b]/50 transition-all"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Secret Key</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Secret Key</label>
+              <div className="relative group">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-[#ff007b] transition-colors" />
                 <input 
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-casino-gold/50 transition-colors"
+                  placeholder="••••••••"
+                  className="w-full bg-black border border-white/10 rounded-2xl py-5 pl-12 pr-4 text-sm font-bold text-white focus:outline-none focus:border-[#ff007b]/50 transition-all"
                   required
                 />
               </div>
@@ -92,11 +128,11 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             <AnimatePresence>
               {error && (
                 <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-xs"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-bold"
                 >
-                  <AlertCircle className="w-4 h-4" />
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   {error}
                 </motion.div>
               )}
@@ -105,29 +141,23 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             <button 
               type="submit" 
               disabled={loading}
-              className="btn-gold w-full flex items-center justify-center gap-2"
+              className="w-full bg-white text-black font-black py-5 rounded-2xl text-sm uppercase tracking-widest shadow-[0_10px_30px_rgba(255,255,255,0.1)] hover:bg-[#ff007b] hover:text-white transition-all disabled:opacity-50"
             >
               {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  VERIFYING...
-                </>
+                <Loader2 className="w-5 h-5 animate-spin mx-auto" />
               ) : (
-                isLogin ? 'SECURE LOGIN' : 'CREATE ACCOUNT'
+                isLogin ? 'SECURE ACCESS' : 'CREATE PLAYER ID'
               )}
             </button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-white/5 text-center">
-            <p className="text-sm text-gray-500">
-              {isLogin ? "Don't have an account yet?" : "Already a member?"}
-              <button 
-                onClick={() => setIsLogin(!isLogin)}
-                className="ml-2 text-casino-gold font-bold hover:underline"
-              >
-                {isLogin ? 'Register Now' : 'Login Here'}
-              </button>
-            </p>
+          <div className="mt-10 pt-10 border-t border-white/5 text-center">
+            <button 
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-xs font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
+            >
+              {isLogin ? "New Player? Register Here" : "Already a Member? Login"}
+            </button>
           </div>
         </div>
       </motion.div>

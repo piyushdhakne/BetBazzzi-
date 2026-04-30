@@ -5,12 +5,12 @@
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   
-  --color-casino-gold: #D4AF37;
-  --color-casino-gold-light: #F9E27E;
+  --color-casino-gold: #ff007b;
+  --color-casino-gold-light: #ff409a;
   --color-casino-dark: #0A0A0A;
-  --color-casino-bg: #050505;
-  --color-casino-card: #121212;
-  --color-casino-neon-purple: #9D00FF;
+  --color-casino-bg: #0d0d0d;
+  --color-casino-card: #161616;
+  --color-casino-neon-purple: #8140ff;
 }
 
 @layer base {
@@ -21,17 +21,21 @@
 
 @layer components {
   .btn-gold {
-    @apply bg-casino-gold text-black font-bold py-3 px-8 rounded-full transition-all 
-           hover:bg-casino-gold-light hover:scale-105 active:scale-95 
-           shadow-[0_0_20px_rgba(212,175,55,0.3)];
+    @apply bg-[#ff007b] text-white font-bold py-3 px-8 rounded-xl transition-all 
+           hover:bg-[#ff1a88] hover:scale-[1.02] active:scale-95 
+           shadow-[0_0_20px_rgba(255,0,123,0.3)];
   }
   
   .glass-card {
-    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl;
+    @apply bg-[#161616] border border-white/5 rounded-[2rem];
   }
   
   .neon-text {
-    @apply text-casino-neon-purple drop-shadow-[0_0_10px_rgba(157,0,255,0.8)];
+    @apply text-[#ff007b] drop-shadow-[0_0_10px_rgba(255,0,123,0.5)];
+  }
+
+  .arcade-card {
+    @apply bg-[#161616] border border-white/5 rounded-[2rem] p-6 hover:bg-[#1c1c1c] transition-all cursor-pointer;
   }
 
   @keyframes marquee {
@@ -41,5 +45,20 @@
 
   .animate-marquee {
     animation: marquee 20s linear infinite;
+  }
+
+  .clip-path-pointer {
+    clip-path: polygon(100% 0, 0 0, 50% 100%);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
   }
 }

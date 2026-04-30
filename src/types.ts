@@ -7,9 +7,10 @@ export interface Game {
   id: string;
   title: string;
   description: string;
-  category: 'slots' | 'cards' | 'roulette' | 'special';
+  category: 'slots' | 'cards' | 'roulette' | 'special' | 'ipl';
   thumbnail: string;
   minBet: number;
+  isComingSoon?: boolean;
 }
 
 export interface User {

@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, Coins, Trophy, X } from 'lucide-react';
-import { useAuth, handleFirestoreError } from '../AuthContext';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth, handleFirestoreError, OperationType } from '../AuthContext';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const SYMBOLS = ['💎', '7️⃣', '🍒', '🔔', '🍋', '🍇', '⭐'];
@@ -23,6 +23,16 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [lastWin, setLastWin] = useState<number | null>(null);
   const [bet, setBet] = useState(10);
+  const [globalRigging, setGlobalRigging] = useState(5);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+      if (doc.exists()) setGlobalRigging(doc.data().riggingLevel ?? 5);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'settings/global');
+    });
+    return () => unsub();
+  }, []);
 
   const balance = user?.balance ?? 0;
 
@@ -32,14 +42,31 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
     setIsSpinning(true);
     setLastWin(null);
     
-    // Deduct bet immediately locally
     await updateBalanceLocally(-bet);
 
-    // Simulated spin delay
     setTimeout(async () => {
-      const newReels = Array(REEL_COUNT).fill(0).map(() => 
-        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]
-      );
+      // Logic: 3/9 win probability for all bets.
+      const winProbability = 3 / 9;
+      const shouldWin = Math.random() < winProbability;
+      
+      let newReels;
+      if (shouldWin) {
+        // Force a win (at least 2 matching)
+        const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+        if (Math.random() < 0.3) {
+          // 3 Matching
+          newReels = [symbol, symbol, symbol];
+        } else {
+          // 2 Matching
+          const other = SYMBOLS.find(s => s !== symbol) || SYMBOLS[0];
+          newReels = [symbol, symbol, other].sort(() => Math.random() - 0.5);
+        }
+      } else {
+        // Force a total loss
+        const indices = Array.from({length: SYMBOLS.length}, (_, i) => i).sort(() => Math.random() - 0.5);
+        newReels = [SYMBOLS[indices[0]], SYMBOLS[indices[1]], SYMBOLS[indices[2]]];
+      }
+
       setReels(newReels);
       setIsSpinning(false);
       
@@ -49,18 +76,20 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
         await updateBalanceLocally(winAmount);
       }
 
-      // Record bet in Firestore
+      // Record bet in History
       try {
-        await addDoc(collection(db, 'bets'), {
+        await addDoc(collection(db, 'history'), {
           userId: user.id,
-          gameId: 'neon-slots',
+          username: user.username,
+          game: 'Slots',
           amount: bet,
-          winAmount: winAmount,
-          result: winAmount > 0 ? 'WIN' : 'LOSS',
+          wonAmount: winAmount,
+          result: winAmount / (bet || 1),
+          win: winAmount >= bet,
           timestamp: serverTimestamp()
         });
       } catch (error) {
-        handleFirestoreError(error, 'create' as any, 'bets');
+        handleFirestoreError(error, 'create' as any, 'history');
       }
     }, 1500);
   };
@@ -68,10 +97,12 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
   const calculateWin = (results: string[]) => {
     const unique = new Set(results);
     if (unique.size === 1) {
-      return bet * 10;
+      return bet * 25; // Massive win for 3 matching symbols
     } else if (unique.size === 2) {
-      return Math.floor(bet * 1.5);
+      return Math.floor(bet * 3); // Better reward for 2 matching symbols
     }
+    // High chance for a pity win even with no matches to keep balance high
+    if (Math.random() < 0.25) return bet;
     return 0;
   };
 

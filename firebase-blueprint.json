@@ -2,55 +2,132 @@
   "entities": {
     "User": {
       "title": "User Profile",
-      "description": "Stores user balance and basic profile info.",
+      "description": "Stores user balance and role.",
       "type": "object",
       "properties": {
         "username": { "type": "string" },
         "balance": { "type": "number" },
         "role": { "type": "string", "enum": ["user", "admin"] },
+        "isOnline": { "type": "boolean" },
+        "lastSeen": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["username", "balance", "role", "createdAt"]
     },
+    "GameState": {
+      "title": "Global Game State",
+      "description": "Synchronized state for the multiplayer spinner.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["idle", "betting", "spinning", "result"] },
+        "result": { "type": "number" },
+        "forcedResult": { "type": "number" },
+        "minBet": { "type": "number" },
+        "minPointsToPlay": { "type": "number" },
+        "spinStartTime": { "type": "string", "format": "date-time" },
+        "roundId": { "type": "string" }
+      },
+      "required": ["status", "minBet", "minPointsToPlay"]
+    },
     "Bet": {
-      "title": "Bet Transaction",
-      "description": "Records of all bets placed and their outcomes.",
+      "title": "Player Bet",
+      "description": "Bet placed by a player for a specific round.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
-        "gameId": { "type": "string" },
+        "username": { "type": "string" },
         "amount": { "type": "number" },
-        "winAmount": { "type": "number" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "result": { "type": "string" }
+        "chosenNumber": { "type": "number" },
+        "roundId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "gameId", "amount", "winAmount", "timestamp"]
+      "required": ["userId", "username", "amount", "chosenNumber", "roundId", "timestamp"]
     },
-    "SystemLog": {
-       "title": "System Log",
-       "description": "Admin actions and system events.",
-       "type": "object",
-       "properties": {
-         "action": { "type": "string" },
-         "adminId": { "type": "string" },
-         "targetId": { "type": "string" },
-         "timestamp": { "type": "string", "format": "date-time" }
-       },
-       "required": ["action", "timestamp"]
+    "HistoryEntry": {
+      "title": "Game Result History",
+      "description": "Records of previous spin results and winners.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "game": { "type": "string" },
+        "result": { "type": "number" },
+        "win": { "type": "boolean" },
+        "amount": { "type": "number" },
+        "wonAmount": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "username", "game", "result", "win", "amount", "timestamp"]
+    },
+    "IPLQuestion": {
+      "title": "IPL Betting Question",
+      "description": "A live question about an IPL match.",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string" },
+        "options": { "type": "array" },
+        "multiplier": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "settled", "cancelled"] },
+        "correctAnswer": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["question", "options", "multiplier", "status", "createdAt"]
+    },
+    "IPLBet": {
+      "title": "IPL Bet Record",
+      "description": "A bet placed by a user on an IPL question.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "questionId": { "type": "string" },
+        "option": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "won", "lost", "refunded"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "username", "questionId", "option", "amount", "status", "timestamp"]
+    },
+    "GlobalConfig": {
+      "title": "Global Settings",
+      "description": "Admin controlled settings for the entire casino.",
+      "type": "object",
+      "properties": {
+        "riggingLevel": { "type": "number", "description": "0 to 100, where 100 is always house wins" },
+        "houseEdge": { "type": "number", "description": "Percentage taken as edge" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["riggingLevel"]
     }
   },
   "firestore": {
+    "/settings/global": {
+      "schema": "GlobalConfig",
+      "description": "Global casino configuration"
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "User profiles"
     },
-    "/bets/{betId}": {
-      "schema": "Bet",
-      "description": "Global bet tracking"
+    "/game/state": {
+      "schema": "GameState",
+      "description": "The single document controlling the multiplayer game"
     },
-    "/system_logs/{logId}": {
-      "schema": "SystemLog",
-      "description": "Audit logs for admin actions"
+    "/rounds/{roundId}/bets/{betId}": {
+      "schema": "Bet",
+      "description": "Bets for specific game rounds"
+    },
+    "/history/{historyId}": {
+      "schema": "HistoryEntry",
+      "description": "Public game history"
+    },
+    "/ipl_questions/{questionId}": {
+      "schema": "IPLQuestion",
+      "description": "Admin created IPL betting questions"
+    },
+    "/ipl_bets/{betId}": {
+      "schema": "IPLBet",
+      "description": "User bets on IPL questions"
     }
   }
 }

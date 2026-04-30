@@ -7,52 +7,70 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Play } from 'lucide-react';
 
-export default function Hero() {
+export default function Hero({ onPlay }: { onPlay: () => void }) {
   return (
-    <section id="hero" className="relative h-[80vh] flex items-center overflow-hidden">
-      {/* Background with Overlay */}
-      <div className="absolute inset-0 z-0">
-        <img 
-          src="https://images.unsplash.com/photo-1596838132731-163820252119?auto=format&fit=crop&q=80&w=2000" 
-          alt="Casino Interior" 
-          className="w-full h-full object-cover opacity-40"
-          referrerPolicy="no-referrer"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-casino-bg via-transparent to-casino-bg/50"></div>
-      </div>
+    <section id="hero" className="max-w-7xl mx-auto px-6 md:px-10 py-10">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={onPlay}
+        className="relative h-[450px] rounded-[3rem] overflow-hidden cursor-pointer group shadow-2xl border border-white/5"
+      >
+        {/* Background Image */}
+        <div className="absolute inset-0">
+          <img 
+            src="https://images.unsplash.com/photo-1518173835740-f5d14111d76a?auto=format&fit=crop&q=80&w=2000" 
+            alt="Multiplayer Spinner" 
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+            referrerPolicy="no-referrer"
+          />
+          {/* Overlays */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
+          <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-all"></div>
+        </div>
 
-      {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="max-w-2xl"
-        >
-          <span className="inline-block py-1 px-3 rounded-full bg-casino-neon-purple/20 text-casino-neon-purple text-xs font-bold tracking-widest uppercase mb-4 border border-casino-neon-purple/30">
-            Welcome Bonus: 200% up to $5,000
-          </span>
-          <h1 className="font-display font-extrabold text-6xl md:text-8xl leading-[0.9] tracking-tighter mb-6">
-            WHERE <span className="text-casino-gold">LEGENDS</span> ARE BORN.
-          </h1>
-          <p className="text-lg text-gray-400 mb-10 max-w-lg">
-            Experience the thrill of high-stakes gaming from the comfort of your home. 
-            Join the elite club of LuxeVegas and claim your throne.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button className="btn-gold flex items-center justify-center gap-2 group">
-              <Play className="w-5 h-5 fill-current" />
-              PLAY NOW
-            </button>
-            <button className="px-8 py-3 rounded-full border border-white/20 font-bold hover:bg-white/5 transition-all">
-              EXPLORE GAMES
-            </button>
-          </div>
-        </motion.div>
-      </div>
+        {/* Content */}
+        <div className="absolute bottom-12 left-12 right-12 flex flex-col md:flex-row justify-between items-end gap-6">
+           <div className="space-y-4 max-w-lg">
+              <span className="inline-block py-1 px-4 rounded-full bg-[#ff007b] text-white text-[10px] font-black tracking-widest uppercase shadow-[0_0_15px_#ff007b]">
+                 AVAILABLE NOW
+              </span>
+              <div className="relative">
+                <h1 className="text-7xl md:text-9xl font-black text-white italic tracking-tighter leading-[0.8] uppercase drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]">
+                   SPIN<span className="text-[#ff007b]">NER</span>
+                </h1>
+                <div className="absolute -top-4 -right-12 rotate-12">
+                   <span className="bg-[#ff007b] text-white text-[8px] font-black px-2 py-0.5 rounded-sm uppercase tracking-tighter shadow-lg">
+                      MULTI-PLAYER
+                   </span>
+                </div>
+              </div>
+              <p className="text-gray-300 text-sm font-medium leading-relaxed max-w-sm">
+                 Join thousands of players in the world's most thrilling real-time multiplier spinner. Win up to 100x your wager instantly!
+              </p>
+           </div>
 
-      {/* Decorative elements */}
-      <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-casino-bg to-transparent"></div>
+           <div className="flex flex-col items-center gap-4">
+              <div className="flex -space-x-4 mb-2">
+                 {[...Array(4)].map((_, i) => (
+                    <div key={i} className={`w-12 h-12 rounded-full border-4 border-black bg-zinc-800 flex items-center justify-center font-bold text-xs ring-2 ring-white/5 shadow-xl`}>
+                       {i === 3 ? '+8k' : <img src={`https://i.pravatar.cc/100?u=${i}`} className="w-full h-full rounded-full" />}
+                    </div>
+                 ))}
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlay();
+                }}
+                className="bg-white text-black font-black px-12 py-5 rounded-[1.5rem] tracking-widest uppercase hover:bg-[#ff007b] hover:text-white transition-all shadow-2xl flex items-center gap-3 group/btn"
+              >
+                 <Play className="w-5 h-5 fill-current" />
+                 PLAY NOW
+              </button>
+           </div>
+        </div>
+      </motion.div>
     </section>
   );
 }

@@ -16,12 +16,13 @@ import {
   getDoc, 
   setDoc, 
   serverTimestamp,
-  increment
+  increment,
+  updateDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { INITIAL_BALANCE } from './constants';
 
-enum OperationType {
+export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
   DELETE = 'delete',
@@ -68,6 +69,7 @@ interface AuthContextType {
   register: (id: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
   updateBalanceLocally: (amount: number) => Promise<void>;
+  promoteToAdmin: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,18 +108,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (id: string, pass: string) => {
-    const email = `${id.toLowerCase()}@luxevegas.internal`;
-    await signInWithEmailAndPassword(auth, email, pass);
+    const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const email = `${cleanId}@arcade.hub`;
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    
+    // Auto-promote if it's the special admin account
+    if (id.toLowerCase() === 'admin') {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
+        if (userDoc.exists() && userDoc.data().role !== 'admin') {
+          await updateDoc(doc(db, 'users', cred.user.uid), { role: 'admin' });
+        }
+      } catch (e) {
+        console.error("Failed to auto-promote admin", e);
+      }
+    }
   };
 
   const register = async (id: string, pass: string) => {
-    const email = `${id.toLowerCase()}@luxevegas.internal`;
+    const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const email = `${cleanId}@arcade.hub`;
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
     
+    const isSpecialAdmin = id.toLowerCase() === 'admin';
+    const role: 'user' | 'admin' = isSpecialAdmin ? 'admin' : 'user';
+
     const profile = {
       username: id,
       balance: INITIAL_BALANCE,
-      role: 'user' as const,
+      role: role,
+      isOnline: true,
+      lastSeen: serverTimestamp(),
       createdAt: serverTimestamp(),
     };
 
@@ -127,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: cred.user.uid,
         username: id,
         balance: INITIAL_BALANCE,
-        role: 'user',
+        role: isSpecialAdmin ? 'admin' : 'user',
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${cred.user.uid}`);
@@ -149,8 +170,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const promoteToAdmin = async () => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.id);
+      await updateDoc(userRef, { role: 'admin' });
+      setUser(prev => prev ? { ...prev, role: 'admin' } : null);
+    } catch (error) {
+      // If rules block standard promotion, we might need a special path if we really want 
+      // but for now, the user can just register with the special ID.
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateBalanceLocally }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateBalanceLocally, promoteToAdmin }}>
       {children}
     </AuthContext.Provider>
   );

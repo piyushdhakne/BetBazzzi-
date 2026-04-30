@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Navbar from './components/Navbar';
+import LiveTicker from './components/LiveTicker';
 import Hero from './components/Hero';
 import GameGrid from './components/GameGrid';
 import Footer from './components/Footer';
-import SlotMachine from './components/SlotMachine';
+import MultiplayerSpinner from './components/MultiplayerSpinner';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
+import PlayerHistory from './components/PlayerHistory';
+import IPLBetting from './components/IPLBetting';
+import SuperSpin from './components/SuperSpin';
+import PlinkoDrop from './components/PlinkoDrop';
 import { Trophy, Zap, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
@@ -15,6 +20,7 @@ export default function App() {
   const [jackpot, setJackpot] = useState(1284592);
   const [showAuth, setShowAuth] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const { user, loading } = useAuth();
 
   // Simulated live jackpot ticker
@@ -34,40 +40,17 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen">
-      {/* Mini Top Ticker */}
-      <div className="bg-casino-gold text-black py-1 overflow-hidden whitespace-nowrap">
-        <div className="flex animate-marquee gap-10 items-center">
-          {[...Array(5)].map((_, i) => (
-            <span key={i} className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-              <Trophy className="w-3 h-3" />
-              LATEST WINNER: PLAYER_{Math.floor(Math.random() * 9999)} WON $432 on ROYAL BLACKJACK!
-              <Zap className="w-3 h-3 text-red-600 fill-current" />
-            </span>
-          ))}
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-[#ff007b] selection:text-white">
       <Navbar 
         onAuthClick={() => setShowAuth(true)} 
         onAdminClick={() => setShowAdmin(true)} 
+        onHistoryClick={() => user ? setShowHistory(true) : setShowAuth(true)}
       />
+      <LiveTicker />
       
-      <main>
-        <Hero />
+      <main className="pb-20">
+        <Hero onPlay={() => user ? setActiveGame('multi-spinner') : setShowAuth(true)} />
         
-        {/* Jackpot Section */}
-        <section className="relative z-20 -mt-16 sm:-mt-24">
-          <div className="max-w-4xl mx-auto px-4">
-            <div className="glass-card p-8 text-center bg-zinc-950/80 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-casino-gold/20">
-              <span className="text-casino-gold text-xs font-bold uppercase tracking-[0.3em] mb-2 block">CUMULATIVE PROGRESSIVE JACKPOT</span>
-              <div className="font-display font-black text-5xl md:text-7xl text-white tracking-tighter tabular-nums drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-                ${jackpot.toLocaleString()}
-              </div>
-            </div>
-          </div>
-        </section>
-
         <GameGrid onPlayGame={(id) => {
           if (!user) {
             setShowAuth(true);
@@ -76,30 +59,14 @@ export default function App() {
           }
         }} />
 
-        {/* Features Section */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 border-t border-white/5">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-            {[
-              { icon: '💎', title: 'Loyalty Rewards', desc: 'Every bet counts towards your VIP status and exclusive cashback offers.' },
-              { icon: '⚡', title: 'Instant Withdrawals', desc: 'Get your winnings in minutes with our automated payment gateway.' },
-              { icon: '🎧', title: '24/7 Support', desc: 'Our dedicated concierge is always available to assist with your journey.' }
-            ].map((feature, i) => (
-              <div key={i} className="text-center">
-                <div className="text-4xl mb-4">{feature.icon}</div>
-                <h3 className="font-display font-bold text-xl mb-2">{feature.title}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed">{feature.desc}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* Player History Modal Toggle is handled in Navbar */}
 
-        <section className="bg-zinc-900/50 py-10">
-          <div className="max-w-4xl mx-auto px-4 flex items-center gap-6 text-gray-500">
-            <AlertCircle className="w-12 h-12 flex-shrink-0 opacity-20" />
-            <p className="text-xs leading-loose uppercase tracking-widest font-bold">
-              Gambling can be addictive. Please play responsibly. Our tools allow you to set limits, take breaks, or self-exclude. LuxeVegas is committed to player protection.
+        {/* Responsible Gaming Footer */}
+        <section className="max-w-4xl mx-auto px-6 py-20 mt-10 border-t border-white/5 opacity-30 text-center">
+            <AlertCircle className="w-8 h-8 mx-auto mb-4" />
+            <p className="text-[10px] leading-loose uppercase tracking-[0.2em] font-black italic">
+              Gambling can be addictive. Please play responsibly. LUXE ARCADE is committed to player protection and fair play.
             </p>
-          </div>
         </section>
       </main>
 
@@ -107,11 +74,23 @@ export default function App() {
 
       {/* Overlays */}
       <AnimatePresence>
-        {activeGame === 'neon-slots' && (
-          <SlotMachine onClose={() => setActiveGame(null)} />
+        {activeGame === 'multi-spinner' && (
+          <MultiplayerSpinner onClose={() => setActiveGame(null)} />
+        )}
+
+        {activeGame === 'ipl-probability' && (
+          <IPLBetting onClose={() => setActiveGame(null)} />
+        )}
+
+        {activeGame === 'super-spin' && (
+          <SuperSpin onClose={() => setActiveGame(null)} />
+        )}
+
+        {activeGame === 'mega-drop' && (
+          <PlinkoDrop onClose={() => setActiveGame(null)} />
         )}
         
-        {activeGame && activeGame !== 'neon-slots' && (
+        {activeGame && !['multi-spinner', 'ipl-probability', 'super-spin', 'mega-drop'].includes(activeGame) && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
@@ -121,7 +100,7 @@ export default function App() {
             >
                <Trophy className="w-12 h-12 text-casino-gold mx-auto mb-4" />
                <h3 className="text-xl font-bold mb-2">Coming Soon!</h3>
-               <p className="text-gray-400 text-sm mb-6">We're still polishing the {activeGame} experience. Play Neon Strike Slots in the meantime!</p>
+               <p className="text-gray-400 text-sm mb-6">We're still polishing the {activeGame} experience. Play Multiplayer Spinner in the meantime!</p>
                <button onClick={() => setActiveGame(null)} className="btn-gold w-full py-2 text-sm">BACK TO LOBBY</button>
             </motion.div>
           </div>
@@ -133,6 +112,10 @@ export default function App() {
 
         {showAdmin && user?.role === 'admin' && (
           <AdminPanel onClose={() => setShowAdmin(false)} />
+        )}
+
+        {showHistory && user && (
+          <PlayerHistory onClose={() => setShowHistory(false)} />
         )}
       </AnimatePresence>
     </div>

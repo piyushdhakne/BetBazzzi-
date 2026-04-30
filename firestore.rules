@@ -28,42 +28,97 @@ service cloud.firestore {
       }
 
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
+      allow list: if isSignedIn();
       
       allow create: if isSignedIn() && isOwner(userId) && 
                       isValidId(userId) &&
                       isValidUser(incoming()) && 
-                      incoming().role == 'user' && 
+                      (
+                        (incoming().role == 'user' && incoming().username.lower() != 'admin') ||
+                        (incoming().role == 'admin' && incoming().username.lower() == 'admin')
+                      ) && 
                       incoming().balance == 1000;
 
       allow update: if (
         isAdmin() || 
-        (isOwner(userId) && isValidUser(incoming()) && (
-          (incoming().diff(existing()).affectedKeys().hasOnly(['balance']))
+        (isOwner(userId) && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'isOnline', 'lastSeen'])) ||
+          (existing().username.lower() == 'admin' && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'balance', 'isOnline', 'lastSeen']))
         ))
       );
     }
 
-    // 5. Bets
-    match /bets/{betId} {
+    // 5. Game State
+    match /game/state {
+      allow read: if isSignedIn();
+      allow update: if isAdmin();
+      allow create: if isAdmin();
+    }
+
+    // 5.1 Global Settings
+    match /settings/global {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // 6. Round Bets
+    match /rounds/{roundId}/bets/{betId} {
       function isValidBet(data) {
         return data.userId == request.auth.uid &&
-               data.gameId is string &&
+               data.username is string &&
                data.amount is number && data.amount > 0 &&
-               data.winAmount is number &&
-               data.result in ['WIN', 'LOSS'] &&
+               data.chosenNumber is number &&
+               data.roundId == roundId &&
                data.timestamp == request.time;
       }
 
-      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow get: if isSignedIn() && isValidId(betId) && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && isValidId(betId) && isValidBet(incoming());
       allow update, delete: if isAdmin();
     }
 
-    // 6. System Logs
+    // 7. Game History
+    match /history/{historyId} {
+      function isValidHistory(data) {
+        return (data.userId == request.auth.uid || isAdmin()) &&
+               data.username is string &&
+               data.game is string &&
+               data.result is number &&
+               data.win is bool &&
+               data.amount is number &&
+               data.wonAmount is number &&
+               data.timestamp == request.time;
+      }
+
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidHistory(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    // 8. Old System Logs (Deny)
     match /system_logs/{logId} {
       allow read, write: if isAdmin();
+    }
+
+    // 9. IPL Betting
+    match /ipl_questions/{questionId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /ipl_bets/{betId} {
+      function isValidIPLBet(data) {
+        return data.userId == request.auth.uid &&
+               data.status == 'pending' &&
+               data.amount > 0 &&
+               data.timestamp == request.time;
+      }
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidIPLBet(incoming());
+      allow update: if isAdmin(); // Admin settles bets
     }
   }
 }
