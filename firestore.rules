@@ -11,8 +11,10 @@ service cloud.firestore {
     function isSignedIn() { return request.auth != null; }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
     function isAdmin() { 
-      return isSignedIn() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; 
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email in ['admin@hub.v3', '1234@hub.v3', '12345@hub.v3'])
+      );
     }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
@@ -32,6 +34,22 @@ service cloud.firestore {
       allow get, update, delete: if isAdmin();
     }
 
+    match /transaction_requests/{requestId} {
+      function isValidRequest(data) {
+        return data.userId == request.auth.uid &&
+               data.username is string &&
+               data.amount is number && data.amount > 0 &&
+               data.type in ['deposit', 'withdraw'] &&
+               data.status == 'pending' &&
+               data.timestamp == request.time;
+      }
+
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidRequest(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
     match /users/{userId} {
       function isValidUser(data) {
         return data.username is string && data.username.size() > 0 && data.username.size() <= 64 &&
@@ -47,8 +65,8 @@ service cloud.firestore {
                       isValidId(userId) &&
                       isValidUser(incoming()) && 
                       (
-                        (incoming().role == 'user' && incoming().username.lower() != 'admin') ||
-                        (incoming().role == 'admin' && incoming().username.lower() == 'admin')
+                        (incoming().role == 'user' && !(incoming().username.lower() in ['admin', '1234', '12345'])) ||
+                        (incoming().role == 'admin' && (incoming().username.lower() in ['admin', '1234', '12345']))
                       ) && 
                       incoming().balance == 10) ||
                       (userId.startsWith('guest_') && incoming().isGuest == true && incoming().balance == 10);
@@ -57,7 +75,7 @@ service cloud.firestore {
         isAdmin() || 
         (isOwner(userId) && (
           (incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'isOnline', 'lastSeen', 'mustLose', 'isGuest'])) ||
-          (existing().username.lower() == 'admin' && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'balance', 'isOnline', 'lastSeen', 'mustLose', 'isGuest']))
+          ((existing().username.lower() in ['admin', '1234', '12345']) && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'balance', 'isOnline', 'lastSeen', 'mustLose', 'isGuest']))
         ))
       );
     }

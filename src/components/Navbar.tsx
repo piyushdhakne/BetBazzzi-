@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Diamond, Coins, UserCircle, Menu, LogOut, Shield, Wallet, History } from 'lucide-react';
+import { Diamond, Coins, UserCircle, Menu, LogOut, Shield, Wallet, History, Plus } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { motion } from 'motion/react';
 
@@ -12,9 +12,10 @@ interface NavbarProps {
   onAuthClick: () => void;
   onAdminClick: () => void;
   onHistoryClick: () => void;
+  onTransactionClick: () => void;
 }
 
-export default function Navbar({ onAuthClick, onAdminClick, onHistoryClick }: NavbarProps) {
+export default function Navbar({ onAuthClick, onAdminClick, onHistoryClick, onTransactionClick }: NavbarProps) {
   const { user, logout, promoteToAdmin } = useAuth();
 
   return (
@@ -30,6 +31,13 @@ export default function Navbar({ onAuthClick, onAdminClick, onHistoryClick }: Na
                    <span className="text-sm font-black text-white tabular-nums">
                      ${user.balance.toLocaleString()}
                    </span>
+                   <button 
+                     onClick={onTransactionClick}
+                     className="ml-2 w-6 h-6 rounded-full bg-[#ff007b] text-white flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-lg shadow-pink-500/20"
+                     id="add-points-btn"
+                   >
+                      <Plus className="w-3 h-3 text-white" />
+                   </button>
                 </div>
                 
                 <div className="h-8 w-px bg-white/10 hidden sm:block"></div>

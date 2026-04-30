@@ -72,13 +72,17 @@ export default function AuthModal({ onClose }: AuthModalProps) {
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/operation-not-allowed') {
-        setError('Email/Password auth is not enabled. Try "Continue as Guest" below.');
+        setError('Email/Password auth is not enabled in Firebase Console. Please enable it or use Google/Guest Mode.');
       } else if (err.code === 'auth/invalid-credential') {
-        setError(isLogin ? 'Invalid ID or Key. If you are in a restricted environment (iframe), please use Guest Mode.' : 'Invalid registration. Key must be at least 6 characters.');
+        setError(isLogin 
+          ? 'Incorrect Player ID or Secret Key. If you just registered, ensure your Secret Key is correct.' 
+          : 'Registration failed. This can happen if the Player ID format is invalid or if Email/Password authentication is not enabled in your Firebase Console.');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('Player ID already taken. Login if it is yours.');
+      } else if (err.code === 'auth/invalid-id') {
+        setError(err.message);
       } else if (err.code === 'auth/weak-password') {
-        setError('Secret Key must be at least 6 characters.');
+        setError('Secret Key must be at least 4 characters for security.');
       } else if (err.code === 'auth/invalid-email') {
         setError('ID contains invalid characters.');
       } else {
@@ -180,13 +184,15 @@ export default function AuthModal({ onClose }: AuthModalProps) {
              <div className="h-px flex-1 bg-white/5"></div>
           </div>
 
-          <button 
-            onClick={handleGuestLogin}
-            disabled={loading}
-            className="w-full mt-4 bg-zinc-900 text-gray-400 font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest border border-white/5 hover:border-white/20 hover:text-white transition-all disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'CONTINUE AS GUEST'}
-          </button>
+          <div className="mt-4 flex flex-col gap-3">
+             <button 
+               onClick={handleGuestLogin}
+               disabled={loading}
+               className="w-full bg-zinc-900 text-gray-400 font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest border border-white/5 hover:border-white/20 hover:text-white transition-all disabled:opacity-50"
+             >
+               {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'CONTINUE AS GUEST'}
+             </button>
+          </div>
 
           <div className="mt-10 pt-6 border-t border-white/5 text-center">
             <button 

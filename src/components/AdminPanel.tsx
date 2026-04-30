@@ -36,12 +36,13 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [users, setUsers] = useState<UserData[]>([]);
   const [gameState, setGameState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'spinner' | 'ipl' | 'system' | 'history' | 'players'>('history');
+  const [tab, setTab] = useState<'spinner' | 'ipl' | 'system' | 'history' | 'players' | 'requests'>('requests');
   
   // System State
   const [riggingLevel, setRiggingLevel] = useState(0);
   const [houseEdge, setHouseEdge] = useState(1);
   const [betHistory, setBetHistory] = useState<any[]>([]);
+  const [transactionRequests, setTransactionRequests] = useState<any[]>([]);
 
   // Spinner State
   const [forcedResult, setForcedResult] = useState<string>('');
@@ -80,6 +81,13 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       handleFirestoreError(error, OperationType.LIST, 'history');
     });
 
+    // Transaction Requests
+    const txUnsub = onSnapshot(query(collection(db, 'transaction_requests'), where('status', '==', 'pending'), orderBy('timestamp', 'desc')), (snap) => {
+      setTransactionRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'transaction_requests');
+    });
+
     const unsub = onSnapshot(doc(db, 'game', 'state'), (doc) => {
       if (doc.exists()) {
         const data = doc.data();
@@ -99,8 +107,23 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       handleFirestoreError(error, OperationType.LIST, 'ipl_questions');
     });
 
-    return () => { unsub(); iplUnsub(); configUnsub(); historyUnsub(); };
+    return () => { unsub(); iplUnsub(); configUnsub(); historyUnsub(); txUnsub(); };
   }, []);
+
+  const handleProcessTransaction = async (request: any, action: 'approved' | 'rejected') => {
+    try {
+      const txRef = doc(db, 'transaction_requests', request.id);
+      await updateDoc(txRef, { status: action });
+
+      if (action === 'approved') {
+        const userRef = doc(db, 'users', request.userId);
+        const amountChange = request.type === 'deposit' ? request.amount : -request.amount;
+        await updateDoc(userRef, { balance: increment(amountChange) });
+      }
+    } catch (err) {
+      handleFirestoreError(err, 'update' as any, `transaction_requests/${request.id}`);
+    }
+  };
 
   const updateGlobalConfig = async () => {
     try {
@@ -410,6 +433,12 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                 className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${tab === 'players' ? 'bg-[#ff007b] text-white' : 'text-gray-500 hover:text-white'}`}
               >
                 Players
+              </button>
+              <button 
+                onClick={() => setTab('requests')}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${tab === 'requests' ? 'bg-[#ff007b] text-white' : 'text-gray-500 hover:text-white'}`}
+              >
+                Requests {transactionRequests.length > 0 && <span className="ml-1 bg-white text-black px-1.5 rounded-full text-[8px]">{transactionRequests.length}</span>}
               </button>
            </div>
         </div>
@@ -741,6 +770,56 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                    ))}
                 </div>
              </div>
+          </div>
+        ) : tab === 'requests' ? (
+          <div className="space-y-6">
+            <h2 className="text-sm font-bold uppercase tracking-widest px-4">Pending Transactions</h2>
+            <div className="space-y-4">
+               {transactionRequests.map(r => (
+                 <div key={r.id} className="bg-[#161616] p-6 rounded-[2rem] border border-white/5 space-y-4">
+                    <div className="flex items-center justify-between">
+                       <div>
+                          <div className="flex items-center gap-2">
+                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">User:</span>
+                             <span className="text-sm font-black text-white">{r.username}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                             <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase ${r.type === 'deposit' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                                {r.type}
+                             </span>
+                             <span className="text-xs font-black text-white">$ {r.amount}</span>
+                          </div>
+                       </div>
+                       <div className="text-right">
+                          <p className="text-[9px] text-gray-500 font-bold uppercase">
+                             {r.timestamp?.seconds ? new Date(r.timestamp.seconds * 1000).toLocaleString() : 'Just now'}
+                          </p>
+                       </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                       <button 
+                         onClick={() => handleProcessTransaction(r, 'approved')}
+                         className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-green-500 transition-all"
+                       >
+                         Approve
+                       </button>
+                       <button 
+                         onClick={() => handleProcessTransaction(r, 'rejected')}
+                         className="flex-1 bg-white/5 border border-white/10 text-red-500 font-black py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-red-500/10 transition-all"
+                       >
+                         Reject
+                       </button>
+                    </div>
+                 </div>
+               ))}
+               {transactionRequests.length === 0 && (
+                 <div className="py-20 text-center opacity-20">
+                    <DollarSign className="w-12 h-12 mx-auto mb-4" />
+                    <p className="text-xs font-black uppercase tracking-widest">No pending requests</p>
+                 </div>
+               )}
+            </div>
           </div>
         ) : (
           <div className="space-y-4">

@@ -12,6 +12,20 @@
       },
       "required": ["userId", "username", "text", "timestamp"]
     },
+    "TransactionRequest": {
+      "title": "Transaction Request",
+      "description": "A request for deposit or withdrawal",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["deposit", "withdraw"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "username", "amount", "type", "status", "timestamp"]
+    },
     "User": {
       "title": "User Profile",
       "description": "Stores user balance and role.",

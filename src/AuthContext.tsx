@@ -9,6 +9,8 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut,
+  signInWithPopup,
+  GoogleAuthProvider,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -132,7 +134,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   isGuest: false,
                 });
               } else {
-                setUser(null);
+                // If document is missing but user has an admin email, we can temporarily set them as admin
+                // so the login logic can create the document
+                const email = fbUser.email || '';
+                const isAdminEmail = email === 'admin@hub.v3' || email === '1234@hub.v3' || email === '12345@hub.v3';
+                
+                if (isAdminEmail) {
+                   setUser({
+                     id: fbUser.uid,
+                     username: email.split('@')[0],
+                     balance: 10,
+                     role: 'admin',
+                     mustLose: false,
+                     isGuest: false,
+                   });
+                } else {
+                  setUser(null);
+                }
               }
             } else {
               setUser(null);
@@ -160,19 +178,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const normalizePassword = (pass: string) => {
+    // Firebase requires 6 chars. If user enters less, we pad it consistently
+    if (pass.length < 6) {
+      return `${pass}_arcade_hub`; // pad to satisfy Firebase
+    }
+    return pass;
+  };
+
   const login = async (id: string, pass: string) => {
     localStorage.removeItem('arcade_guest_id');
     localStorage.removeItem('arcade_guest_name');
     const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const email = `${cleanId}@arcade.hub`;
-    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    const email = `${cleanId}@hub.v3`;
+    const normalizedPass = normalizePassword(pass);
+    try {
+      await signInWithEmailAndPassword(auth, email, normalizedPass);
+    } catch (err: any) {
+      console.error("Firebase Login Error:", err.code, err.message);
+      // Special case for the requested admin account: if login fails, attempt to register it
+      if ((cleanId === '1234' || cleanId === '12345' || cleanId === 'admin') && (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email')) {
+        try {
+          await register(id, pass);
+          return;
+        } catch (regErr) {
+          console.error("Auto-registration failed:", regErr);
+        }
+      }
+      throw err;
+    }
     
     // Auto-promote if it's the special admin account
-    if (id.toLowerCase() === 'admin') {
+    const isAdminId = cleanId === 'admin' || cleanId === '1234' || cleanId === '12345';
+    if (isAdminId) {
       try {
-        const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
-        if (userDoc.exists() && userDoc.data().role !== 'admin') {
-          await updateDoc(doc(db, 'users', cred.user.uid), { role: 'admin' });
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (!userDoc.exists()) {
+            // Document missing, create it
+            const profile = {
+              username: id.trim(),
+              balance: INITIAL_BALANCE,
+              role: 'admin' as const,
+              isOnline: true,
+              lastSeen: serverTimestamp(),
+              createdAt: serverTimestamp(),
+              mustLose: false,
+            };
+            await setDoc(doc(db, 'users', uid), profile);
+            setUser({
+              id: uid,
+              username: id.trim(),
+              balance: INITIAL_BALANCE,
+              role: 'admin',
+              mustLose: false,
+              isGuest: false,
+            });
+          } else if (userDoc.data().role !== 'admin') {
+            await updateDoc(doc(db, 'users', uid), { role: 'admin' });
+          }
         }
       } catch (e) {
         console.error("Failed to auto-promote admin", e);
@@ -184,34 +249,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('arcade_guest_id');
     localStorage.removeItem('arcade_guest_name');
     const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const email = `${cleanId}@arcade.hub`;
-    const cred = await createUserWithEmailAndPassword(auth, email, pass);
+    if (!cleanId) {
+      throw { code: 'auth/invalid-id', message: 'Player ID must contain at least one alphanumeric character.' };
+    }
+    const email = `${cleanId}@hub.v3`;
+    const normalizedPass = normalizePassword(pass);
     
-    const isSpecialAdmin = id.toLowerCase() === 'admin';
-    const role: 'user' | 'admin' = isSpecialAdmin ? 'admin' : 'user';
-
-    const profile = {
-      username: id,
-      balance: INITIAL_BALANCE,
-      role: role,
-      isOnline: true,
-      lastSeen: serverTimestamp(),
-      createdAt: serverTimestamp(),
-      mustLose: false,
-    };
-
     try {
+      const cred = await createUserWithEmailAndPassword(auth, email, normalizedPass);
+      
+      const isAdminId = cleanId === 'admin' || cleanId === '1234' || cleanId === '12345';
+      const role: 'user' | 'admin' = isAdminId ? 'admin' : 'user';
+
+      const profile = {
+        username: id.trim(),
+        balance: INITIAL_BALANCE,
+        role: role,
+        isOnline: true,
+        lastSeen: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        mustLose: false,
+      };
+
       await setDoc(doc(db, 'users', cred.user.uid), profile);
       setUser({
         id: cred.user.uid,
-        username: id,
+        username: id.trim(),
         balance: INITIAL_BALANCE,
-        role: isSpecialAdmin ? 'admin' : 'user',
+        role: role,
         mustLose: false,
         isGuest: false,
       });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${cred.user.uid}`);
+    } catch (error: any) {
+      console.error("Firebase Register Error:", error.code, error.message);
+      throw error;
     }
   };
 

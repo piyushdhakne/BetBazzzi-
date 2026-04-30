@@ -49,17 +49,43 @@ export async function suggestIPLQuestion(): Promise<SuggestedQuestion | null> {
   }
 }
 
-export async function getLiveIPLUpdate(): Promise<string> {
+export async function fetchIPLNewsHeadlines(): Promise<string[]> {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: "Check current IPL scores. Give a very brief (max 15 words) high-energy update. Highlight extreme possibilities or dramatic match turns that create big betting opportunities. Make it sound urgent and exciting for a gambling app.",
+      contents: "Search for the latest IPL match scores, player injuries, and point table shifts. Return 5-7 short, dramatic headlines (max 80 chars each) that make users want to bet. Focus on recent performance and high-stakes match turns.",
       config: {
-        tools: [{ googleSearch: {} }]
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
       }
     });
-    return response.text?.trim() || "Live IPL action heats up! Big winnings ahead.";
-  } catch {
-    return "Massive multipliers live now! Check predictions.";
+
+    if (response.text) {
+      return JSON.parse(response.text.trim());
+    }
+    return getFallbackHeadlines();
+  } catch (error: any) {
+    // Handle quota or throttling errors gracefully
+    if (error?.message?.includes('RESOURCE_EXHAUSTED') || error?.status === 429) {
+      console.warn("Gemini Quota Exceeded. Using cached/fallback headlines.");
+    } else {
+      console.error("Gemini News Error:", error);
+    }
+    return getFallbackHeadlines();
   }
+}
+
+function getFallbackHeadlines(): string[] {
+  return [
+    "IPL 2024: Massive upset alert in tonight's clash!",
+    "Kohli's form hits peak - big odds on RCB today.",
+    "Mumbai Indians back in the hunt - watch the spread.",
+    "Last ball thriller expected! Betting markets are hot.",
+    "In-form bowlers making the difference this week.",
+    "Live points table shifting - every run matters now!"
+  ];
 }

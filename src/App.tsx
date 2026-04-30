@@ -13,6 +13,7 @@ import IPLBetting from './components/IPLBetting';
 import SuperSpin from './components/SuperSpin';
 import PlinkoDrop from './components/PlinkoDrop';
 import { Chat } from './components/Chat';
+import { TransactionModal } from './components/TransactionModal';
 import { Trophy, Zap, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
@@ -22,6 +23,7 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showTransactions, setShowTransactions] = useState(false);
   const { user, loading } = useAuth();
 
   // Simulated live jackpot ticker
@@ -46,6 +48,7 @@ export default function App() {
         onAuthClick={() => setShowAuth(true)} 
         onAdminClick={() => setShowAdmin(true)} 
         onHistoryClick={() => user ? setShowHistory(true) : setShowAuth(true)}
+        onTransactionClick={() => user ? setShowTransactions(true) : setShowAuth(true)}
       />
       <LiveTicker />
       
@@ -119,6 +122,10 @@ export default function App() {
 
         {showHistory && user && (
           <PlayerHistory onClose={() => setShowHistory(false)} />
+        )}
+
+        {showTransactions && user && (
+          <TransactionModal onClose={() => setShowTransactions(false)} />
         )}
       </AnimatePresence>
     </div>
