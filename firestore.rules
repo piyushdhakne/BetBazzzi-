@@ -37,8 +37,8 @@ service cloud.firestore {
                         (incoming().role == 'user' && incoming().username.lower() != 'admin') ||
                         (incoming().role == 'admin' && incoming().username.lower() == 'admin')
                       ) && 
-                      incoming().balance == 1000) ||
-                      (userId.startsWith('guest_') && incoming().isGuest == true && incoming().balance == 1000);
+                      incoming().balance == 10) ||
+                      (userId.startsWith('guest_') && incoming().isGuest == true && incoming().balance == 10);
 
       allow update: if (
         isAdmin() || 

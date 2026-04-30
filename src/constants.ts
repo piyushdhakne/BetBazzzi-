@@ -5,7 +5,7 @@
 
 import { Game } from './types';
 
-export const INITIAL_BALANCE = 1000;
+export const INITIAL_BALANCE = 10;
 
 export const GAMES: Game[] = [
   {
