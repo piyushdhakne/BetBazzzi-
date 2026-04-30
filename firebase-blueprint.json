@@ -1,5 +1,17 @@
 {
   "entities": {
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message sent in the global chat",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "username", "text", "timestamp"]
+    },
     "User": {
       "title": "User Profile",
       "description": "Stores user balance and role.",

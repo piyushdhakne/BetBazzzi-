@@ -12,6 +12,7 @@ import PlayerHistory from './components/PlayerHistory';
 import IPLBetting from './components/IPLBetting';
 import SuperSpin from './components/SuperSpin';
 import PlinkoDrop from './components/PlinkoDrop';
+import { Chat } from './components/Chat';
 import { Trophy, Zap, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
@@ -71,6 +72,8 @@ export default function App() {
       </main>
 
       <Footer />
+
+      <Chat />
 
       {/* Overlays */}
       <AnimatePresence>

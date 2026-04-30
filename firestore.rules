@@ -19,6 +19,19 @@ service cloud.firestore {
     function existing() { return resource.data; }
 
     // 4. User Profiles
+    match /global_chat/{messageId} {
+      function isValidMessage(data) {
+        return data.userId == request.auth.uid &&
+               data.username is string && data.username.size() <= 32 &&
+               data.text is string && data.text.size() <= 200 &&
+               data.timestamp == request.time;
+      }
+
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(messageId) && isValidMessage(incoming());
+      allow get, update, delete: if isAdmin();
+    }
+
     match /users/{userId} {
       function isValidUser(data) {
         return data.username is string && data.username.size() > 0 && data.username.size() <= 64 &&
