@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, Coins, Trophy, X } from 'lucide-react';
-import { useWallet } from '../WalletContext';
+import { useAuth, handleFirestoreError } from '../AuthContext';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const SYMBOLS = ['💎', '7️⃣', '🍒', '🔔', '🍋', '🍇', '⭐'];
 const REEL_COUNT = 3;
@@ -16,43 +18,61 @@ interface SlotMachineProps {
 }
 
 export default function SlotMachine({ onClose }: SlotMachineProps) {
-  const { balance, updateBalance } = useWallet();
+  const { user, updateBalanceLocally } = useAuth();
   const [reels, setReels] = useState(Array(REEL_COUNT).fill(SYMBOLS[0]));
   const [isSpinning, setIsSpinning] = useState(false);
   const [lastWin, setLastWin] = useState<number | null>(null);
   const [bet, setBet] = useState(10);
 
-  const spin = () => {
-    if (balance < bet || isSpinning) return;
+  const balance = user?.balance ?? 0;
+
+  const spin = async () => {
+    if (balance < bet || isSpinning || !user) return;
     
-    updateBalance(-bet);
     setIsSpinning(true);
     setLastWin(null);
+    
+    // Deduct bet immediately locally
+    await updateBalanceLocally(-bet);
 
     // Simulated spin delay
-    setTimeout(() => {
+    setTimeout(async () => {
       const newReels = Array(REEL_COUNT).fill(0).map(() => 
         SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]
       );
       setReels(newReels);
       setIsSpinning(false);
-      calculateWin(newReels);
+      
+      const winAmount = calculateWin(newReels);
+      if (winAmount > 0) {
+        setLastWin(winAmount);
+        await updateBalanceLocally(winAmount);
+      }
+
+      // Record bet in Firestore
+      try {
+        await addDoc(collection(db, 'bets'), {
+          userId: user.id,
+          gameId: 'neon-slots',
+          amount: bet,
+          winAmount: winAmount,
+          result: winAmount > 0 ? 'WIN' : 'LOSS',
+          timestamp: serverTimestamp()
+        });
+      } catch (error) {
+        handleFirestoreError(error, 'create' as any, 'bets');
+      }
     }, 1500);
   };
 
   const calculateWin = (results: string[]) => {
     const unique = new Set(results);
     if (unique.size === 1) {
-      // Jackpot! (3 of a kind)
-      const winAmount = bet * 10;
-      updateBalance(winAmount);
-      setLastWin(winAmount);
+      return bet * 10;
     } else if (unique.size === 2) {
-      // Small win (2 of a kind)
-      const winAmount = Math.floor(bet * 1.5);
-      updateBalance(winAmount);
-      setLastWin(winAmount);
+      return Math.floor(bet * 1.5);
     }
+    return 0;
   };
 
   return (
@@ -62,7 +82,6 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
         animate={{ scale: 1, opacity: 1 }}
         className="w-full max-w-2xl bg-zinc-950 border border-casino-gold/30 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(212,175,55,0.2)]"
       >
-        {/* Modal Header */}
         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-casino-gold/10 to-transparent">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-casino-gold rounded-lg flex items-center justify-center">
@@ -81,7 +100,6 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
           </button>
         </div>
 
-        {/* Slot Display */}
         <div className="p-10 flex flex-col items-center">
           <div className="flex gap-4 mb-10">
             {reels.map((symbol, idx) => (
@@ -117,7 +135,6 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
           </AnimatePresence>
 
           <div className="w-full max-w-sm flex flex-col gap-6">
-            {/* Bet Controls */}
             <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 p-4 rounded-2xl">
               <span className="text-sm font-bold text-gray-400">YOUR BET</span>
               <div className="flex items-center gap-4">
@@ -137,7 +154,6 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
               </div>
             </div>
 
-            {/* Spin Button */}
             <button
               onClick={spin}
               disabled={isSpinning || balance < bet}
@@ -157,6 +173,9 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
             
             {balance < bet && !isSpinning && (
               <p className="text-red-500 text-center text-sm font-medium">Insufficient balance!</p>
+            )}
+            {!user && (
+              <p className="text-casino-gold text-center text-sm font-medium">Please login to play!</p>
             )}
           </div>
         </div>

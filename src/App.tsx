@@ -1,20 +1,21 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect } from 'react';
-import { WalletProvider } from './WalletContext';
+import { motion, AnimatePresence } from 'motion/react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import GameGrid from './components/GameGrid';
 import Footer from './components/Footer';
 import SlotMachine from './components/SlotMachine';
+import AuthModal from './components/AuthModal';
+import AdminPanel from './components/AdminPanel';
 import { Trophy, Zap, AlertCircle } from 'lucide-react';
+import { useAuth } from './AuthContext';
 
-function CasinoApp() {
+export default function App() {
   const [activeGame, setActiveGame] = useState<string | null>(null);
   const [jackpot, setJackpot] = useState(1284592);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const { user, loading } = useAuth();
 
   // Simulated live jackpot ticker
   useEffect(() => {
@@ -24,6 +25,14 @@ function CasinoApp() {
     return () => clearInterval(interval);
   }, []);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-casino-bg flex items-center justify-center">
+        <Zap className="w-12 h-12 text-casino-gold animate-pulse" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
       {/* Mini Top Ticker */}
@@ -32,14 +41,17 @@ function CasinoApp() {
           {[...Array(5)].map((_, i) => (
             <span key={i} className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
               <Trophy className="w-3 h-3" />
-              LATEST WINNER: USER_{Math.floor(Math.random() * 9999)} WON $432 on ROYAL BLACKJACK!
+              LATEST WINNER: PLAYER_{Math.floor(Math.random() * 9999)} WON $432 on ROYAL BLACKJACK!
               <Zap className="w-3 h-3 text-red-600 fill-current" />
             </span>
           ))}
         </div>
       </div>
 
-      <Navbar />
+      <Navbar 
+        onAuthClick={() => setShowAuth(true)} 
+        onAdminClick={() => setShowAdmin(true)} 
+      />
       
       <main>
         <Hero />
@@ -56,7 +68,13 @@ function CasinoApp() {
           </div>
         </section>
 
-        <GameGrid onPlayGame={(id) => setActiveGame(id)} />
+        <GameGrid onPlayGame={(id) => {
+          if (!user) {
+            setShowAuth(true);
+          } else {
+            setActiveGame(id);
+          }
+        }} />
 
         {/* Features Section */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 border-t border-white/5">
@@ -75,7 +93,6 @@ function CasinoApp() {
           </div>
         </section>
 
-        {/* Responsible Gaming Banner */}
         <section className="bg-zinc-900/50 py-10">
           <div className="max-w-4xl mx-auto px-4 flex items-center gap-6 text-gray-500">
             <AlertCircle className="w-12 h-12 flex-shrink-0 opacity-20" />
@@ -88,30 +105,36 @@ function CasinoApp() {
 
       <Footer />
 
-      {/* Game Modals */}
-      {activeGame === 'neon-slots' && (
-        <SlotMachine onClose={() => setActiveGame(null)} />
-      )}
-      
-      {/* Simple Alert for other games */}
-      {activeGame && activeGame !== 'neon-slots' && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 p-8 rounded-2xl border border-white/10 max-w-sm text-center">
-             <Trophy className="w-12 h-12 text-casino-gold mx-auto mb-4" />
-             <h3 className="text-xl font-bold mb-2">Coming Soon!</h3>
-             <p className="text-gray-400 text-sm mb-6">We're still polishing the {activeGame} experience. Play Neon Strike Slots in the meantime!</p>
-             <button onClick={() => setActiveGame(null)} className="btn-gold w-full py-2 text-sm">BACK TO LOBBY</button>
+      {/* Overlays */}
+      <AnimatePresence>
+        {activeGame === 'neon-slots' && (
+          <SlotMachine onClose={() => setActiveGame(null)} />
+        )}
+        
+        {activeGame && activeGame !== 'neon-slots' && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-zinc-900 p-8 rounded-2xl border border-white/10 max-w-sm text-center"
+            >
+               <Trophy className="w-12 h-12 text-casino-gold mx-auto mb-4" />
+               <h3 className="text-xl font-bold mb-2">Coming Soon!</h3>
+               <p className="text-gray-400 text-sm mb-6">We're still polishing the {activeGame} experience. Play Neon Strike Slots in the meantime!</p>
+               <button onClick={() => setActiveGame(null)} className="btn-gold w-full py-2 text-sm">BACK TO LOBBY</button>
+            </motion.div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
 
-export default function App() {
-  return (
-    <WalletProvider>
-      <CasinoApp />
-    </WalletProvider>
+        {showAuth && (
+          <AuthModal onClose={() => setShowAuth(false)} />
+        )}
+
+        {showAdmin && user?.role === 'admin' && (
+          <AdminPanel onClose={() => setShowAdmin(false)} />
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

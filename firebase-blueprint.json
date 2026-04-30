@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user balance and basic profile info.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "balance": { "type": "number" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["username", "balance", "role", "createdAt"]
+    },
+    "Bet": {
+      "title": "Bet Transaction",
+      "description": "Records of all bets placed and their outcomes.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "gameId": { "type": "string" },
+        "amount": { "type": "number" },
+        "winAmount": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "result": { "type": "string" }
+      },
+      "required": ["userId", "gameId", "amount", "winAmount", "timestamp"]
+    },
+    "SystemLog": {
+       "title": "System Log",
+       "description": "Admin actions and system events.",
+       "type": "object",
+       "properties": {
+         "action": { "type": "string" },
+         "adminId": { "type": "string" },
+         "targetId": { "type": "string" },
+         "timestamp": { "type": "string", "format": "date-time" }
+       },
+       "required": ["action", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/bets/{betId}": {
+      "schema": "Bet",
+      "description": "Global bet tracking"
+    },
+    "/system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Audit logs for admin actions"
+    }
+  }
+}
