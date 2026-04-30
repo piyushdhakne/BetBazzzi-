@@ -83,66 +83,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for Guest Session first
+    let unsub: (() => void) | undefined;
+    
+    // Safety timeout to ensure loading screen doesn't stay forever
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
     const guestId = localStorage.getItem('arcade_guest_id');
     const guestUsername = localStorage.getItem('arcade_guest_name');
     
     const initAuth = async () => {
-      if (guestId && guestUsername) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', guestId));
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            setUser({
-              id: guestId,
-              username: data.username,
-              balance: data.balance,
-              role: data.role,
-              mustLose: data.mustLose || false,
-              isGuest: true,
-            });
-            setLoading(false);
-            return;
-          }
-        } catch (e) {
-          console.error("Guest session init failed", e);
-        }
-      }
-
-      const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-        if (fbUser) {
+      try {
+        if (guestId && guestUsername) {
           try {
-            const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+            const userDoc = await getDoc(doc(db, 'users', guestId));
             if (userDoc.exists()) {
               const data = userDoc.data();
               setUser({
-                id: fbUser.uid,
+                id: guestId,
                 username: data.username,
                 balance: data.balance,
                 role: data.role,
                 mustLose: data.mustLose || false,
-                isGuest: false,
+                isGuest: true,
               });
+              setLoading(false);
+              clearTimeout(safetyTimeout);
+              return;
+            }
+          } catch (e) {
+            console.error("Guest session init failed", e);
+          }
+        }
+
+        unsub = onAuthStateChanged(auth, async (fbUser) => {
+          try {
+            if (fbUser) {
+              const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+              if (userDoc.exists()) {
+                const data = userDoc.data();
+                setUser({
+                  id: fbUser.uid,
+                  username: data.username,
+                  balance: data.balance,
+                  role: data.role,
+                  mustLose: data.mustLose || false,
+                  isGuest: false,
+                });
+              } else {
+                setUser(null);
+              }
             } else {
               setUser(null);
             }
           } catch (error) {
-            handleFirestoreError(error, OperationType.GET, `users/${fbUser.uid}`);
+            console.error("Auth state user doc fetch failed", error);
+            setUser(null);
+          } finally {
+            setLoading(false);
+            clearTimeout(safetyTimeout);
           }
-        } else {
-          setUser(null);
-        }
+        });
+      } catch (error) {
+        console.error("Auth initialization failed", error);
         setLoading(false);
-      });
-
-      return unsubscribe;
+        clearTimeout(safetyTimeout);
+      }
     };
 
-    let unsub: any;
-    initAuth().then(u => unsub = u);
+    initAuth();
 
     return () => {
       if (unsub) unsub();
+      clearTimeout(safetyTimeout);
     };
   }, []);
 

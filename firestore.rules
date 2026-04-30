@@ -27,17 +27,18 @@ service cloud.firestore {
                data.createdAt is timestamp;
       }
 
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isSignedIn();
+      allow get: if isOwner(userId) || isAdmin() || (userId.startsWith('guest_'));
+      allow list: if isSignedIn() || isAdmin();
       
-      allow create: if isSignedIn() && isOwner(userId) && 
+      allow create: if (isSignedIn() && isOwner(userId) && 
                       isValidId(userId) &&
                       isValidUser(incoming()) && 
                       (
                         (incoming().role == 'user' && incoming().username.lower() != 'admin') ||
                         (incoming().role == 'admin' && incoming().username.lower() == 'admin')
                       ) && 
-                      incoming().balance == 1000;
+                      incoming().balance == 1000) ||
+                      (userId.startsWith('guest_') && incoming().isGuest == true && incoming().balance == 1000);
 
       allow update: if (
         isAdmin() || 
