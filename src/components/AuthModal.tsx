@@ -18,16 +18,29 @@ export default function AuthModal({ onClose }: AuthModalProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login, register } = useAuth();
+  const { login, register, guestLogin } = useAuth();
+
+  const handleGuestLogin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await guestLogin();
+      onClose();
+    } catch (err: any) {
+      setError('Guest login failed. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUsername = username.trim();
-    if (!cleanUsername || !password) return;
+    const cleanPassword = password.trim();
+    if (!cleanUsername || !cleanPassword) return;
     
     if (cleanUsername.includes('@')) {
       setError('Please enter a Player ID (e.g. Player_99), not an email address.');
-      setLoading(false);
       return;
     }
     
@@ -36,33 +49,40 @@ export default function AuthModal({ onClose }: AuthModalProps) {
     try {
       if (isLogin) {
         try {
-          await login(cleanUsername, password);
+          await login(cleanUsername, cleanPassword);
         } catch (loginErr: any) {
           // Special case: If logging in as Admin with correct pass fails, try registering as Admin
-          if (cleanUsername.toLowerCase() === 'admin' && password === 'Admin1234') {
-            await register(cleanUsername, password);
+          if (cleanUsername.toLowerCase() === 'admin' && (cleanPassword === 'Admin1234' || cleanPassword === 'admin1234')) {
+            try {
+              await register(cleanUsername, cleanPassword);
+            } catch (regErr: any) {
+              if (regErr.code === 'auth/email-already-in-use') {
+                 throw loginErr; // Throw original login error if it already exists
+              }
+              throw regErr;
+            }
           } else {
             throw loginErr;
           }
         }
       } else {
-        await register(cleanUsername, password);
+        await register(cleanUsername, cleanPassword);
       }
       onClose();
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/operation-not-allowed') {
-        setError('Email/Password auth is not enabled in Firebase Console.');
+        setError('Email/Password auth is not enabled. Try "Continue as Guest" below.');
       } else if (err.code === 'auth/invalid-credential') {
-        setError(isLogin ? 'Invalid ID or Secret Key. Please check your credentials or register as a new player.' : 'Invalid registration details. Ensure your Key is at least 6 characters.');
+        setError(isLogin ? 'Invalid ID or Key. If you are in a restricted environment (iframe), please use Guest Mode.' : 'Invalid registration. Key must be at least 6 characters.');
       } else if (err.code === 'auth/email-already-in-use') {
-        setError('This Player ID is already taken. Please choose another one.');
+        setError('Player ID already taken. Login if it is yours.');
       } else if (err.code === 'auth/weak-password') {
-        setError('Secret Key must be at least 6 characters long.');
+        setError('Secret Key must be at least 6 characters.');
       } else if (err.code === 'auth/invalid-email') {
-        setError('Player ID is invalid. Please use letters and numbers only.');
+        setError('ID contains invalid characters.');
       } else {
-        setError(err.message || 'Authentication failed');
+        setError('Auth Error. Try Guest Mode if this persists.');
       }
     } finally {
       setLoading(false);
@@ -128,12 +148,15 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             <AnimatePresence>
               {error && (
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-bold"
+                   initial={{ opacity: 0, height: 0 }}
+                   animate={{ opacity: 1, height: 'auto' }}
+                   exit={{ opacity: 0, height: 0 }}
+                   className="overflow-hidden"
                 >
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {error}
+                  <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-[10px] font-bold uppercase">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {error}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -151,10 +174,24 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             </button>
           </form>
 
-          <div className="mt-10 pt-10 border-t border-white/5 text-center">
+          <div className="mt-4 flex items-center gap-4">
+             <div className="h-px flex-1 bg-white/5"></div>
+             <span className="text-[10px] font-black text-gray-700 uppercase tracking-widest">OR</span>
+             <div className="h-px flex-1 bg-white/5"></div>
+          </div>
+
+          <button 
+            onClick={handleGuestLogin}
+            disabled={loading}
+            className="w-full mt-4 bg-zinc-900 text-gray-400 font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest border border-white/5 hover:border-white/20 hover:text-white transition-all disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'CONTINUE AS GUEST'}
+          </button>
+
+          <div className="mt-10 pt-6 border-t border-white/5 text-center">
             <button 
               onClick={() => setIsLogin(!isLogin)}
-              className="text-xs font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
+              className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
             >
               {isLogin ? "New Player? Register Here" : "Already a Member? Login"}
             </button>

@@ -21,7 +21,7 @@ const SEGMENTS = [
 ];
 
 export default function SuperSpin({ onClose }: { onClose: () => void }) {
-  const { user, updateBalanceLocally } = useAuth();
+  const { user, updateBalanceLocally, setMustLose } = useAuth();
   const [bet, setBet] = useState(20);
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
@@ -52,15 +52,40 @@ export default function SuperSpin({ onClose }: { onClose: () => void }) {
     try {
       await updateBalanceLocally(-bet);
 
-      // Super Spin Logic: 3/9 win probability for all bets.
-      const winProbability = 3 / 9;
+      // Super Spin Logic: 
+      // 1. Strict Flagging: 0% win.
+      // 2. Bet <= 20: 75% win.
+      // 3. Bet > 50: 1/10 (10%) win.
+      let winProbability = 0.25;
+      if (user?.mustLose) {
+        winProbability = 0;
+      } else if (bet <= 20) {
+        winProbability = 0.75;
+      } else if (bet > 50) {
+        winProbability = 0.10;
+      }
+
       const shouldWin = Math.random() < winProbability;
       
       let selectedIndex = 0;
-      if (shouldWin) {
+      if (user?.mustLose) {
+        selectedIndex = 0; // Force total loss
+      } else if (shouldWin) {
         // Filter segments with mult >= 1x
-        const winIndices = SEGMENTS.map((s, i) => s.mult >= 1 ? i : -1).filter(i => i !== -1);
-        selectedIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
+        let winIndices = SEGMENTS.map((s, i) => s.mult >= 1 ? i : -1).filter(i => i !== -1);
+        
+        // Strict block for 100/200 bets: filter out mult >= 3
+        if (bet === 100 || bet === 200) {
+          winIndices = winIndices.filter(i => SEGMENTS[i].mult < 3);
+        }
+        
+        if (winIndices.length > 0) {
+          selectedIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
+        } else {
+          // If no win indices left (e.g. all available were >= 3), pick a loss
+          const lossIndices = SEGMENTS.map((s, i) => s.mult < 1 ? i : -1).filter(i => i !== -1);
+          selectedIndex = lossIndices[Math.floor(Math.random() * lossIndices.length)];
+        }
       } else {
         // Filter segments with mult < 1x
         const lossIndices = SEGMENTS.map((s, i) => s.mult < 1 ? i : -1).filter(i => i !== -1);
@@ -75,6 +100,11 @@ export default function SuperSpin({ onClose }: { onClose: () => void }) {
         const winAmount = Math.floor(bet * SEGMENTS[selectedIndex].mult);
         if (winAmount > 0) {
           await updateBalanceLocally(winAmount);
+          
+          // Trigger must-lose if win > 1.7x bet
+          if (winAmount > bet * 1.7) {
+            await setMustLose();
+          }
         }
         
         const res = { ...SEGMENTS[selectedIndex], winAmount };

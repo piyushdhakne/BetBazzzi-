@@ -15,7 +15,7 @@ const ROWS = 9;
 const MULTIPLIERS = [8, 5, 3, 0.8, 0.6, 0.2, 0.6, 0.8, 3, 5, 8];
 
 export default function PlinkoDrop({ onClose }: { onClose: () => void }) {
-  const { user, updateBalanceLocally } = useAuth();
+  const { user, updateBalanceLocally, setMustLose } = useAuth();
   const [bet, setBet] = useState(20);
   const [dropping, setDropping] = useState(false);
   const [ballPath, setBallPath] = useState<number[]>([]);
@@ -45,16 +45,38 @@ export default function PlinkoDrop({ onClose }: { onClose: () => void }) {
     try {
       await updateBalanceLocally(-bet);
 
-      // 3/9 Probability of "Winning" (landing on >= 3x)
-      const winProbability = 3 / 9;
+      // Logic:
+      // 1. Strict Flagging: 0% win probability.
+      // 2. Bet <= 20: 75% win.
+      // 3. Bet > 50: 1/10 (10%) win.
+      let winProbability = 0.25;
+      if (user?.mustLose) {
+        winProbability = 0;
+      } else if (bet <= 20) {
+        winProbability = 0.75;
+      } else if (bet > 50) {
+        winProbability = 0.10;
+      }
       const isWin = Math.random() < winProbability;
       
       // Select a target index based on win state
       let targetIndex;
-      if (isWin) {
+      if (user?.mustLose) {
+        targetIndex = 4; // Center 0.6x
+      } else if (isWin) {
         // High multipliers: 8x, 5x, 3x
-        const winIndices = [0, 1, 2, 8, 9, 10];
-        targetIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
+        let winIndices = [0, 1, 2, 8, 9, 10];
+        
+        // Strict block for 100/200 bets: avoid mult >= 3
+        if (bet === 100 || bet === 200) {
+          winIndices = winIndices.filter(idx => MULTIPLIERS[idx] < 3);
+        }
+        
+        if (winIndices.length > 0) {
+          targetIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
+        } else {
+          targetIndex = 4; // Fallback to 0.6x
+        }
       } else {
         // Low multipliers: 0.8x, 0.6x, 0.2x
         const lossIndices = [3, 4, 5, 6, 7];
@@ -98,6 +120,11 @@ export default function PlinkoDrop({ onClose }: { onClose: () => void }) {
         const winAmount = Math.floor(bet * mult);
         if (winAmount > 0) {
           await updateBalanceLocally(winAmount);
+          
+          // Trigger must-lose if win > 1.7x bet
+          if (winAmount > bet * 1.7) {
+            await setMustLose();
+          }
         }
         setResult(winAmount);
         

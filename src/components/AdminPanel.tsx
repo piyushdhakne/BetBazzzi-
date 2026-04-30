@@ -21,7 +21,7 @@ import {
   where
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { X, Users, Activity, DollarSign, Settings, Play, Target, ShieldCheck, Save, RotateCcw, ChevronLeft, LayoutDashboard, Trophy, Plus, Check } from 'lucide-react';
+import { X, Users, Activity, DollarSign, Settings, Play, Target, ShieldCheck, Save, RotateCcw, ChevronLeft, LayoutDashboard, Trophy, Plus, Check, AlertCircle } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../AuthContext';
 
 interface UserData {
@@ -260,53 +260,48 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
     if (forcedResult !== '') {
       result = parseInt(forcedResult);
     } else {
-      // Advanced Rigging: Only if riggingLevel is notably high
-      const riggingChance = riggingLevel / 100;
-      const shouldRig = riggingLevel > 10 && Math.random() < riggingChance;
       const segments = gameState?.wheelSegments || 2;
       const mult = gameState?.payoutMultiplier || 2;
+      
+      try {
+        const betsSnap = await getDocs(collection(db, 'rounds', gameState.roundId, 'bets'));
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const userMustLoseMap: Record<string, boolean> = {};
+        usersSnap.docs.forEach(d => {
+          userMustLoseMap[d.id] = d.data().mustLose || false;
+        });
 
-      if (shouldRig) {
-        // Calculate liabilities for each segment
-        const segments = gameState?.wheelSegments || 2;
-        const mult = gameState?.payoutMultiplier || 2;
-        const liabilities = new Array(segments).fill(0);
-        
-        try {
-          const betsSnap = await getDocs(collection(db, 'rounds', gameState.roundId, 'bets'));
-          
-          if (betsSnap.empty) {
-            result = Math.floor(Math.random() * segments);
-          } else {
-            betsSnap.docs.forEach(doc => {
-              const bet = doc.data();
-              if (bet.chosenNumber < segments) {
-                liabilities[bet.chosenNumber] += (bet.amount * mult);
-              }
-            });
+        const hasMustLoseBettors = betsSnap.docs.some(doc => userMustLoseMap[doc.data().userId]);
+        const riggingChance = riggingLevel / 100;
+        const shouldRig = (riggingLevel > 10 && Math.random() < riggingChance) || hasMustLoseBettors;
 
-            // Find the segment with the MINIMUM liability
-            let minLiability = Infinity;
-            let minLiabilitySegments: number[] = [];
+        if (shouldRig && !betsSnap.empty) {
+          const liabilities = new Array(segments).fill(0);
+          betsSnap.docs.forEach(doc => {
+            const bet = doc.data();
+            if (bet.chosenNumber < segments) {
+              const liabilityMult = userMustLoseMap[bet.userId] ? 1000000000 : 1;
+              liabilities[bet.chosenNumber] += (bet.amount * mult * liabilityMult);
+            }
+          });
 
-            liabilities.forEach((l, i) => {
-              if (l < minLiability) {
-                minLiability = l;
-                minLiabilitySegments = [i];
-              } else if (l === minLiability) {
-                minLiabilitySegments.push(i);
-              }
-            });
-
-            // Pick one of the segments that has minimum liability
-            result = minLiabilitySegments[Math.floor(Math.random() * minLiabilitySegments.length)];
-          }
-        } catch (e) {
-          console.error("Rigging Error:", e);
+          let minLiability = Infinity;
+          let minLiabilitySegments: number[] = [];
+          liabilities.forEach((l, i) => {
+            if (l < minLiability) {
+              minLiability = l;
+              minLiabilitySegments = [i];
+            } else if (l === minLiability) {
+              minLiabilitySegments.push(i);
+            }
+          });
+          result = minLiabilitySegments[Math.floor(Math.random() * minLiabilitySegments.length)];
+        } else {
           result = Math.floor(Math.random() * segments);
         }
-      } else {
-        result = Math.floor(Math.random() * (gameState?.wheelSegments || 2));
+      } catch (e) {
+        console.error("Rigging Error:", e);
+        result = Math.floor(Math.random() * segments);
       }
     }
     
@@ -696,34 +691,51 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                 
                 <div className="space-y-2">
                    {users.map(u => (
-                      <div key={u.id} className="grid grid-cols-4 items-center bg-black/30 p-4 rounded-2xl border border-white/5 hover:border-white/10 transition-all">
-                         <div className="flex flex-col">
-                            <span className="font-bold text-sm">{u.username}</span>
-                            {u.role === 'admin' && <span className="text-[8px] font-black bg-[#ff007b]/20 text-[#ff007b] px-2 py-0.5 rounded w-fit mt-1 uppercase">Admin</span>}
-                         </div>
-                         <div className="text-center">
-                            <span className={`text-[10px] font-black uppercase ${u.isOnline ? 'text-green-500' : 'text-gray-600'}`}>
-                               {u.isOnline ? 'ONLINE' : 'OFFLINE'}
-                            </span>
-                         </div>
-                         <div className="flex justify-center">
-                            <input 
-                               type="number"
-                               value={userEdits[u.id] !== undefined ? userEdits[u.id] : u.balance}
-                               onChange={(e) => setUserEdits({ ...userEdits, [u.id]: Number(e.target.value) })}
-                               className="w-20 bg-black border border-white/10 rounded-lg px-2 py-2 text-xs text-center font-bold outline-none focus:border-purple-500"
-                            />
-                         </div>
-                         <div className="flex justify-end">
-                            <button 
-                               onClick={() => handleAdjustBalance(u.id)}
-                               disabled={userEdits[u.id] === undefined}
-                               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                                  userEdits[u.id] !== undefined ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-500 opacity-50'
-                               }`}
-                            >
-                               <Save className="w-3 h-3" /> Save
-                            </button>
+                      <div key={u.id} className="flex flex-col bg-black/30 p-4 rounded-2xl border border-white/5 hover:border-white/10 transition-all gap-4">
+                         <div className="grid grid-cols-4 items-center">
+                            <div className="flex flex-col">
+                               <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm">{u.username}</span>
+                                  {u.mustLose && <span className="text-[8px] font-black bg-red-500/20 text-red-500 px-2 py-0.5 rounded uppercase">Flagged</span>}
+                               </div>
+                               {u.role === 'admin' && <span className="text-[8px] font-black bg-[#ff007b]/20 text-[#ff007b] px-2 py-0.5 rounded w-fit mt-1 uppercase">Admin</span>}
+                            </div>
+                            <div className="text-center">
+                               <span className={`text-[10px] font-black uppercase ${u.isOnline ? 'text-green-500' : 'text-gray-600'}`}>
+                                  {u.isOnline ? 'ONLINE' : 'OFFLINE'}
+                               </span>
+                            </div>
+                            <div className="flex justify-center">
+                               <input 
+                                  type="number"
+                                  value={userEdits[u.id] !== undefined ? userEdits[u.id] : u.balance}
+                                  onChange={(e) => setUserEdits({ ...userEdits, [u.id]: Number(e.target.value) })}
+                                  className="w-20 bg-black border border-white/10 rounded-lg px-2 py-2 text-xs text-center font-bold outline-none focus:border-purple-500"
+                               />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                               <button 
+                                 onClick={async () => {
+                                   try {
+                                     await updateDoc(doc(db, 'users', u.id), { mustLose: !u.mustLose });
+                                     fetchUsers();
+                                   } catch(e) { console.error(e); }
+                                 }}
+                                 className={`p-2 rounded-lg transition-all ${u.mustLose ? 'bg-red-500/20 text-red-500' : 'bg-white/5 text-gray-500 hover:text-white'}`}
+                                 title={u.mustLose ? "Unflag User" : "Flag User (Force Lose)"}
+                               >
+                                 <AlertCircle className="w-4 h-4" />
+                               </button>
+                               <button 
+                                  onClick={() => handleAdjustBalance(u.id)}
+                                  disabled={userEdits[u.id] === undefined}
+                                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                     userEdits[u.id] !== undefined ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-500 opacity-50'
+                                  }`}
+                               >
+                                  <Save className="w-3 h-3" /> Save
+                               </button>
+                            </div>
                          </div>
                       </div>
                    ))}

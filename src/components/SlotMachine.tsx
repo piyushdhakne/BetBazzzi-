@@ -18,7 +18,7 @@ interface SlotMachineProps {
 }
 
 export default function SlotMachine({ onClose }: SlotMachineProps) {
-  const { user, updateBalanceLocally } = useAuth();
+  const { user, updateBalanceLocally, setMustLose } = useAuth();
   const [reels, setReels] = useState(Array(REEL_COUNT).fill(SYMBOLS[0]));
   const [isSpinning, setIsSpinning] = useState(false);
   const [lastWin, setLastWin] = useState<number | null>(null);
@@ -45,8 +45,20 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
     await updateBalanceLocally(-bet);
 
     setTimeout(async () => {
-      // Logic: 3/9 win probability for all bets.
-      const winProbability = 3 / 9;
+      // Logic: 
+      // 1. Strict Flagging: 0% win probability.
+      // 2. Bet <= 20: 75% win probability (win more).
+      // 3. Bet > 50: 1/10 (10%) win probability.
+      // 4. Default: ~25%
+      let winProbability = 0.25;
+      if (user?.mustLose) {
+        winProbability = 0;
+      } else if (bet <= 20) {
+        winProbability = 0.75;
+      } else if (bet > 50) {
+        winProbability = 0.10;
+      }
+      
       const shouldWin = Math.random() < winProbability;
       
       let newReels;
@@ -74,6 +86,11 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
       if (winAmount > 0) {
         setLastWin(winAmount);
         await updateBalanceLocally(winAmount);
+        
+        // Trigger must-lose if win > 1.7x bet
+        if (winAmount > bet * 1.7) {
+          await setMustLose();
+        }
       }
 
       // Record bet in History
@@ -95,12 +112,26 @@ export default function SlotMachine({ onClose }: SlotMachineProps) {
   };
 
   const calculateWin = (results: string[]) => {
+    if (user?.mustLose) return 0; // Strict flagging
     const unique = new Set(results);
+    
+    // Check multiplier first
+    let mult = 0;
     if (unique.size === 1) {
-      return bet * 25; // Massive win for 3 matching symbols
+      mult = 25;
     } else if (unique.size === 2) {
-      return Math.floor(bet * 3); // Better reward for 2 matching symbols
+      mult = 3;
     }
+
+    // Strict block for 100/200 bets: never let them win 3x or more
+    if ((bet === 100 || bet === 200) && mult >= 3) {
+      // Still allow a parity win 25% of time even if it should have been bit win
+      if (Math.random() < 0.25) return bet;
+      return 0;
+    }
+
+    if (mult > 0) return bet * mult;
+
     // High chance for a pity win even with no matches to keep balance high
     if (Math.random() < 0.25) return bet;
     return 0;

