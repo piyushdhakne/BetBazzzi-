@@ -42,7 +42,6 @@ interface AuthContextType {
   login: (id: string, pass: string) => Promise<void>;
   register: (id: string, pass: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  guestLogin: () => Promise<void>;
   logout: () => Promise<void>;
   updateBalanceLocally: (amount: number) => Promise<void>;
   promoteToAdmin: () => Promise<void>;
@@ -63,9 +62,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }, 5000);
 
-    const guestId = localStorage.getItem('arcade_guest_id');
-    const guestUsername = localStorage.getItem('arcade_guest_name');
-    
     const initAuth = async () => {
       try {
         unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -132,8 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loginWithGoogle = async () => {
-    localStorage.removeItem('arcade_guest_id');
-    localStorage.removeItem('arcade_guest_name');
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
@@ -160,8 +154,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (id: string, pass: string) => {
-    localStorage.removeItem('arcade_guest_id');
-    localStorage.removeItem('arcade_guest_name');
     const cleanId = id.trim().toLowerCase();
     const email = cleanId.includes('@') ? cleanId : `${cleanId.replace(/[^a-z0-9]/g, '')}@hub.v3`;
     const normalizedPass = normalizePassword(pass);
@@ -219,8 +211,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (id: string, pass: string) => {
-    localStorage.removeItem('arcade_guest_id');
-    localStorage.removeItem('arcade_guest_name');
     const cleanId = id.trim().toLowerCase();
     if (!cleanId) {
       throw { code: 'auth/invalid-id', message: 'Player ID must contain at least one character.' };
@@ -259,44 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const guestLogin = async () => {
-    try {
-      const cred = await signInAnonymously(auth);
-      const guestId = cred.user.uid;
-      const username = `Guest_${Math.floor(Math.random() * 9000) + 1000}`;
-      
-      const profile = {
-        username: username,
-        balance: INITIAL_BALANCE,
-        role: 'user' as const,
-        isOnline: true,
-        lastSeen: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        mustLose: false,
-        isGuest: true,
-      };
-
-      await setDoc(doc(db, 'users', guestId), profile);
-      localStorage.setItem('arcade_guest_id', guestId);
-      localStorage.setItem('arcade_guest_name', username);
-      
-      setUser({
-        id: guestId,
-        username: username,
-        balance: INITIAL_BALANCE,
-        role: 'user',
-        mustLose: false,
-        isGuest: true,
-      });
-    } catch (error) {
-      console.error("Guest login failed", error);
-      throw error;
-    }
-  };
-
   const logout = async () => {
-    localStorage.removeItem('arcade_guest_id');
-    localStorage.removeItem('arcade_guest_name');
     await signOut(auth);
   };
 
@@ -336,7 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, guestLogin, logout, updateBalanceLocally, promoteToAdmin, setMustLose }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, updateBalanceLocally, promoteToAdmin, setMustLose }}>
       {children}
     </AuthContext.Provider>
   );

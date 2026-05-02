@@ -74,10 +74,9 @@ service cloud.firestore {
                       isValidUser(incoming()) && 
                       (
                         (incoming().role == 'user' && !(incoming().username.lower() in ['admin', '1234', '12345'])) ||
-                        (incoming().role == 'admin' && (incoming().username.lower() in ['admin', '1234', '12345'])) ||
-                        (incoming().isGuest == true)
+                        (incoming().role == 'admin' && (incoming().username.lower() in ['admin', '1234', '12345']))
                       ) && 
-                      incoming().balance == 5000;
+                      incoming().balance == 0;
 
       allow update: if (
         isAdmin() || 
