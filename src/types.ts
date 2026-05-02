@@ -7,7 +7,7 @@ export interface Game {
   id: string;
   title: string;
   description: string;
-  category: 'slots' | 'cards' | 'roulette' | 'special' | 'ipl';
+  category: 'slots' | 'cards' | 'roulette' | 'special' | 'ipl' | 'casino';
   thumbnail: string;
   minBet: number;
   isComingSoon?: boolean;

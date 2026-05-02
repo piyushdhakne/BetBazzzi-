@@ -10,12 +10,14 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   signInWithPopup,
+  signInAnonymously,
   GoogleAuthProvider,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
   doc, 
   getDoc, 
+  onSnapshot,
   setDoc, 
   serverTimestamp,
   increment,
@@ -23,39 +25,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { INITIAL_BALANCE } from './constants';
-
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-  }
-}
-
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
+import { handleFirestoreError, OperationType } from './firebase';
 
 interface UserProfile {
   id: string;
@@ -71,6 +41,7 @@ interface AuthContextType {
   loading: boolean;
   login: (id: string, pass: string) => Promise<void>;
   register: (id: string, pass: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   guestLogin: () => Promise<void>;
   logout: () => Promise<void>;
   updateBalanceLocally: (amount: number) => Promise<void>;
@@ -97,68 +68,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const initAuth = async () => {
       try {
-        if (guestId && guestUsername) {
-          try {
-            const userDoc = await getDoc(doc(db, 'users', guestId));
-            if (userDoc.exists()) {
-              const data = userDoc.data();
-              setUser({
-                id: guestId,
-                username: data.username,
-                balance: data.balance,
-                role: data.role,
-                mustLose: data.mustLose || false,
-                isGuest: true,
-              });
-              setLoading(false);
-              clearTimeout(safetyTimeout);
-              return;
-            }
-          } catch (e) {
-            console.error("Guest session init failed", e);
-          }
-        }
-
         unsub = onAuthStateChanged(auth, async (fbUser) => {
-          try {
-            if (fbUser) {
-              const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
-              if (userDoc.exists()) {
-                const data = userDoc.data();
+          if (fbUser) {
+            const userUnsub = onSnapshot(doc(db, 'users', fbUser.uid), (docSnap) => {
+              if (docSnap.exists()) {
+                const data = docSnap.data();
                 setUser({
                   id: fbUser.uid,
                   username: data.username,
                   balance: data.balance,
                   role: data.role,
                   mustLose: data.mustLose || false,
-                  isGuest: false,
+                  isGuest: data.isGuest || false,
                 });
               } else {
-                // If document is missing but user has an admin email, we can temporarily set them as admin
-                // so the login logic can create the document
-                const email = fbUser.email || '';
-                const isAdminEmail = email === 'admin@hub.v3' || email === '1234@hub.v3' || email === '12345@hub.v3';
-                
-                if (isAdminEmail) {
-                   setUser({
-                     id: fbUser.uid,
-                     username: email.split('@')[0],
-                     balance: 10,
-                     role: 'admin',
-                     mustLose: false,
-                     isGuest: false,
-                   });
-                } else {
-                  setUser(null);
-                }
+                // Document might not exist yet during registration or anonymous login
+                setUser(null);
               }
-            } else {
-              setUser(null);
-            }
-          } catch (error) {
-            console.error("Auth state user doc fetch failed", error);
+              setLoading(false);
+              clearTimeout(safetyTimeout);
+            }, (err) => {
+              console.error("User doc listener error:", err.message, {
+                uid: fbUser.uid,
+                isAnonymous: fbUser.isAnonymous,
+                email: fbUser.email
+              });
+              setLoading(false);
+            });
+            
+            // Cleanup for nested listener
+            const outerUnsub = unsub;
+            unsub = () => {
+              if (outerUnsub) outerUnsub();
+              userUnsub();
+            };
+          } else {
             setUser(null);
-          } finally {
             setLoading(false);
             clearTimeout(safetyTimeout);
           }
@@ -186,11 +131,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return pass;
   };
 
+  const loginWithGoogle = async () => {
+    localStorage.removeItem('arcade_guest_id');
+    localStorage.removeItem('arcade_guest_name');
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const fbUser = result.user;
+      
+      const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+      if (!userDoc.exists()) {
+        const username = fbUser.displayName || fbUser.email?.split('@')[0] || `Player_${Math.floor(Math.random() * 9000) + 1000}`;
+        const profile = {
+          username: username,
+          balance: INITIAL_BALANCE,
+          role: 'user' as const,
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          mustLose: false,
+        };
+        await setDoc(doc(db, 'users', fbUser.uid), profile);
+      }
+    } catch (error: any) {
+      console.error("Google Login Error:", error);
+      throw error;
+    }
+  };
+
   const login = async (id: string, pass: string) => {
     localStorage.removeItem('arcade_guest_id');
     localStorage.removeItem('arcade_guest_name');
-    const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const email = `${cleanId}@hub.v3`;
+    const cleanId = id.trim().toLowerCase();
+    const email = cleanId.includes('@') ? cleanId : `${cleanId.replace(/[^a-z0-9]/g, '')}@hub.v3`;
     const normalizedPass = normalizePassword(pass);
     try {
       await signInWithEmailAndPassword(auth, email, normalizedPass);
@@ -248,11 +221,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (id: string, pass: string) => {
     localStorage.removeItem('arcade_guest_id');
     localStorage.removeItem('arcade_guest_name');
-    const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanId = id.trim().toLowerCase();
     if (!cleanId) {
-      throw { code: 'auth/invalid-id', message: 'Player ID must contain at least one alphanumeric character.' };
+      throw { code: 'auth/invalid-id', message: 'Player ID must contain at least one character.' };
     }
-    const email = `${cleanId}@hub.v3`;
+    const email = cleanId.includes('@') ? cleanId : `${cleanId.replace(/[^a-z0-9]/g, '')}@hub.v3`;
     const normalizedPass = normalizePassword(pass);
     
     try {
@@ -287,32 +260,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const guestLogin = async () => {
-    const randomId = 'guest_' + Math.random().toString(36).substring(2, 11);
-    const username = `Guest_${Math.floor(Math.random() * 9000) + 1000}`;
-    
-    const profile = {
-      username: username,
-      balance: INITIAL_BALANCE,
-      role: 'user',
-      isOnline: true,
-      lastSeen: serverTimestamp(),
-      createdAt: serverTimestamp(),
-      mustLose: false,
-      isGuest: true,
-    };
+    try {
+      const cred = await signInAnonymously(auth);
+      const guestId = cred.user.uid;
+      const username = `Guest_${Math.floor(Math.random() * 9000) + 1000}`;
+      
+      const profile = {
+        username: username,
+        balance: INITIAL_BALANCE,
+        role: 'user' as const,
+        isOnline: true,
+        lastSeen: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        mustLose: false,
+        isGuest: true,
+      };
 
-    await setDoc(doc(db, 'users', randomId), profile);
-    localStorage.setItem('arcade_guest_id', randomId);
-    localStorage.setItem('arcade_guest_name', username);
-    
-    setUser({
-      id: randomId,
-      username: username,
-      balance: INITIAL_BALANCE,
-      role: 'user',
-      mustLose: false,
-      isGuest: true,
-    });
+      await setDoc(doc(db, 'users', guestId), profile);
+      localStorage.setItem('arcade_guest_id', guestId);
+      localStorage.setItem('arcade_guest_name', username);
+      
+      setUser({
+        id: guestId,
+        username: username,
+        balance: INITIAL_BALANCE,
+        role: 'user',
+        mustLose: false,
+        isGuest: true,
+      });
+    } catch (error) {
+      console.error("Guest login failed", error);
+      throw error;
+    }
   };
 
   const logout = async () => {
@@ -357,7 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, guestLogin, logout, updateBalanceLocally, promoteToAdmin, setMustLose }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, guestLogin, logout, updateBalanceLocally, promoteToAdmin, setMustLose }}>
       {children}
     </AuthContext.Provider>
   );

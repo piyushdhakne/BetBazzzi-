@@ -19,15 +19,18 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth, handleFirestoreError, OperationType } from '../AuthContext';
-import { X, Trophy, Wallet, Clock, CheckCircle2, AlertCircle, ChevronLeft } from 'lucide-react';
+import { useAuth } from '../AuthContext';
+import { handleFirestoreError, OperationType } from '../firebase';
+import { X, Trophy, Wallet, Clock, CheckCircle2, AlertCircle, ChevronLeft, ShieldCheck } from 'lucide-react';
 
 interface IPLQuestion {
   id: string;
   question: string;
   options: string[];
-  multiplier: number;
-  status: 'active' | 'settled' | 'cancelled';
+  isLocked?: boolean;
+  multiplier?: number; // Legacy support
+  optionMultipliers?: Record<string, number>;
+  status: 'active' | 'settled' | 'cancelled' | 'deleted_by_admin';
   correctAnswer?: string;
   createdAt: any;
 }
@@ -39,6 +42,8 @@ interface IPLBet {
   questionId: string;
   option: string;
   amount: number;
+  multiplier?: number; 
+  settlementMultiplier?: number;
   status: 'pending' | 'won' | 'lost' | 'refunded';
   timestamp: any;
 }
@@ -51,14 +56,25 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
   const [selectedOption, setSelectedOption] = useState<Record<string, string>>({});
   const [betAmounts, setBetAmounts] = useState<Record<string, string>>({});
   const [placingBet, setPlacingBet] = useState<string | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     // Listen for questions
     const qUnsub = onSnapshot(query(collection(db, 'ipl_questions'), orderBy('createdAt', 'desc')), (snap) => {
-      setQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() } as IPLQuestion)));
+      setQuestions(snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as IPLQuestion))
+        .filter(q => q.status !== 'deleted_by_admin')
+      );
       setLoading(false);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'ipl_questions');
+    });
+
+    // Listen for global lock state
+    const lockUnsub = onSnapshot(doc(db, 'settings', 'ipl'), (doc) => {
+      if (doc.exists()) {
+        setIsLocked(doc.data().locked || false);
+      }
     });
 
     // Listen for my bets
@@ -68,14 +84,15 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
       }, (err) => {
         handleFirestoreError(err, OperationType.LIST, 'ipl_bets');
       });
-      return () => { qUnsub(); bUnsub(); };
+      return () => { qUnsub(); bUnsub(); lockUnsub(); };
     }
 
-    return () => qUnsub();
+    return () => { qUnsub(); lockUnsub(); };
   }, [user]);
 
   const placeBet = async (questionId: string) => {
-    if (!user) return;
+    const question = questions.find(q => q.id === questionId);
+    if (!user || isLocked || question?.isLocked) return;
     const option = selectedOption[questionId];
     const amountStr = betAmounts[questionId];
     if (!option || !amountStr) return;
@@ -91,6 +108,9 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
     try {
       const batch = writeBatch(db);
       
+      const question = questions.find(q => q.id === questionId);
+      const activeMultiplier = question?.optionMultipliers?.[option] || question?.multiplier || 2;
+
       const betRef = doc(collection(db, 'ipl_bets'));
       batch.set(betRef, {
         userId: user.id,
@@ -98,6 +118,7 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
         questionId,
         option,
         amount,
+        multiplier: activeMultiplier, // Lock in the multiplier at bet time
         status: 'pending',
         timestamp: serverTimestamp()
       });
@@ -185,15 +206,17 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
                          <h3 className="text-xl font-black text-white italic uppercase tracking-tighter leading-tight max-w-[80%]">
                             {q.question}
                          </h3>
-                         <div className="bg-[#ff007b]/10 text-[#ff007b] px-3 py-1 rounded-lg text-xs font-black">
-                            {q.multiplier}x
-                         </div>
+                         {q.isLocked && (
+                           <div className="flex items-center gap-2 bg-red-500/10 text-red-500 px-3 py-1 rounded-lg text-[10px] font-black uppercase border border-red-500/20">
+                             <ShieldCheck className="w-3 h-3" /> Locked
+                           </div>
+                         )}
                       </div>
 
                       {existingBet ? (
                         <div className="bg-black/30 p-6 rounded-2xl border border-[#ff007b]/20 flex items-center justify-between">
                            <div>
-                              <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Your Bet</p>
+                              <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Your Bet ({existingBet.multiplier}x)</p>
                               <p className="text-sm font-bold text-white uppercase">{existingBet.option}</p>
                            </div>
                            <div className="text-right">
@@ -204,19 +227,23 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
                       ) : (
                         <div className="space-y-6">
                            <div className="grid grid-cols-2 gap-3">
-                              {q.options.map(opt => (
-                                <button
-                                  key={opt}
-                                  onClick={() => setSelectedOption(prev => ({ ...prev, [q.id]: opt }))}
-                                  className={`py-4 rounded-2xl text-sm font-black transition-all border-2 ${
-                                    selectedOption[q.id] === opt 
-                                    ? 'bg-[#ff007b] text-white border-[#ff007b]' 
-                                    : 'bg-black text-gray-400 border-white/5 hover:border-white/20'
-                                  }`}
-                                >
-                                  {opt}
-                                </button>
-                              ))}
+                              {q.options.map((opt, idx) => {
+                                const mult = q.optionMultipliers?.[opt] || q.multiplier || 2;
+                                return (
+                                  <button
+                                    key={`${opt}-${idx}`}
+                                    onClick={() => setSelectedOption(prev => ({ ...prev, [q.id]: opt }))}
+                                    className={`py-4 rounded-2xl text-xs font-black transition-all border-2 flex flex-col items-center gap-1 ${
+                                      selectedOption[q.id] === opt 
+                                      ? 'bg-[#ff007b] text-white border-[#ff007b]' 
+                                      : 'bg-black text-gray-400 border-white/5 hover:border-white/20'
+                                    }`}
+                                  >
+                                    <span className="uppercase">{opt}</span>
+                                    <span className={`text-[10px] ${selectedOption[q.id] === opt ? 'text-white/70' : 'text-[#ff007b]'}`}>{mult}x</span>
+                                  </button>
+                                );
+                              })}
                            </div>
 
                            <div className="flex gap-3">
@@ -229,10 +256,10 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
                               />
                               <button 
                                 onClick={() => placeBet(q.id)}
-                                disabled={!selectedOption[q.id] || !betAmounts[q.id] || placingBet === q.id}
+                                disabled={!selectedOption[q.id] || !betAmounts[q.id] || placingBet === q.id || isLocked || q.isLocked}
                                 className="bg-white text-black font-black px-8 rounded-2xl text-xs uppercase tracking-widest hover:bg-[#ff007b] hover:text-white transition-all disabled:opacity-50 disabled:grayscale"
                               >
-                                {placingBet === q.id ? 'PLACING...' : 'PLACE BET'}
+                                {isLocked || q.isLocked ? 'LOCKED' : placingBet === q.id ? 'PLACING...' : 'PLACE BET'}
                               </button>
                            </div>
                         </div>
@@ -276,7 +303,7 @@ export default function IPLBetting({ onClose }: { onClose: () => void }) {
                              <div className="text-right">
                                 <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Your Bet</p>
                                 <span className={`text-sm font-black uppercase ${myBet.status === 'won' ? 'text-green-500' : 'text-red-500'}`}>
-                                   {myBet.status === 'won' ? `+$${myBet.amount * q.multiplier}` : `-$${myBet.amount}`}
+                                   {myBet.status === 'won' ? `+$${myBet.amount * (myBet.settlementMultiplier || myBet.multiplier || q.multiplier || 2)}` : `-$${myBet.amount}`}
                                 </span>
                              </div>
                            )}

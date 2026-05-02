@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Play, Sparkles, AlertCircle, Target } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth, handleFirestoreError, OperationType } from '../AuthContext';
+import { useAuth } from '../AuthContext';
+import { handleFirestoreError, OperationType } from '../firebase';
 
 const ROWS = 9;
 // Requested multipliers: 0.2x center.
@@ -22,10 +23,15 @@ export default function PlinkoDrop({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [globalRigging, setGlobalRigging] = useState(0);
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
-      if (doc.exists()) setGlobalRigging(doc.data().riggingLevel ?? 0);
+      if (doc.exists()) {
+        const data = doc.data();
+        setGlobalRigging(data.riggingLevel ?? 0);
+        setDifficulty(data.gameDifficulty || 'medium');
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'settings/global');
     });
@@ -59,27 +65,36 @@ export default function PlinkoDrop({ onClose }: { onClose: () => void }) {
       }
       const isWin = Math.random() < winProbability;
       
-      // Select a target index based on win state
+      // Select a target index based on win state and difficulty
       let targetIndex;
       if (user?.mustLose) {
-        targetIndex = 4; // Center 0.6x
+        targetIndex = 5; // Center 0.2x
       } else if (isWin) {
         // High multipliers: 8x, 5x, 3x
         let winIndices = [0, 1, 2, 8, 9, 10];
         
-        // Strict block for 100/200 bets: avoid mult >= 3
-        if (bet === 100 || bet === 200) {
+        // Strict block for 100/200 bets: avoid mult >= 3 unless easy difficulty
+        if ((bet === 100 || bet === 200) && difficulty !== 'easy') {
           winIndices = winIndices.filter(idx => MULTIPLIERS[idx] < 3);
         }
         
         if (winIndices.length > 0) {
+          // If hard difficulty, prefer lower win indices
+          if (difficulty === 'hard' && Math.random() < 0.5) {
+            winIndices = winIndices.filter(idx => MULTIPLIERS[idx] <= 5);
+          }
           targetIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
         } else {
-          targetIndex = 4; // Fallback to 0.6x
+          targetIndex = 6; // Fallback to 0.6x
         }
       } else {
         // Low multipliers: 0.8x, 0.6x, 0.2x
-        const lossIndices = [3, 4, 5, 6, 7];
+        let lossIndices = [4, 5, 6]; // Most centered
+        if (difficulty === 'hard') {
+           lossIndices = [5]; // Strictly 0.2x if hard + losing
+        } else if (difficulty === 'easy') {
+           lossIndices = [3, 4, 7]; // 0.8x and 0.6x
+        }
         targetIndex = lossIndices[Math.floor(Math.random() * lossIndices.length)];
       }
 
@@ -199,7 +214,7 @@ export default function PlinkoDrop({ onClose }: { onClose: () => void }) {
              {/* Buckets */}
              <div className="w-full max-w-md flex gap-0.5 mt-auto pt-6 pb-6 md:pb-0 px-2 scale-[0.85] md:scale-100">
                 {MULTIPLIERS.map((m, i) => (
-                  <div key={i} className={`flex-1 h-8 md:h-10 rounded-md flex items-center justify-center border transition-all ${m >= 1 ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20 shadow-inner'}`}>
+                  <div key={`plinko-mult-${i}`} className={`flex-1 h-8 md:h-10 rounded-md flex items-center justify-center border transition-all ${m >= 1 ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20 shadow-inner'}`}>
                      <span className={`text-[8px] md:text-[10px] font-black ${m >= 1 ? 'text-green-500' : 'text-red-500'}`}>{m}x</span>
                   </div>
                 ))}

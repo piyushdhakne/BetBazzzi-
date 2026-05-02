@@ -8,12 +8,20 @@ service cloud.firestore {
     }
 
     // 3. Global Helpers
-    function isSignedIn() { return request.auth != null; }
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
     function isAdmin() { 
       return isSignedIn() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        (request.auth.token.email in ['admin@hub.v3', '1234@hub.v3', '12345@hub.v3'])
+        (request.auth.token.get('email', '') != '' && (
+          request.auth.token.email.lower() == 'admin@hub.v3' || 
+          request.auth.token.email.lower() == '1234@hub.v3' || 
+          request.auth.token.email.lower() == '12345@hub.v3' || 
+          request.auth.token.email.lower() == 'piyushdhakne@gmail.com'
+        )) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin')
       );
     }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
@@ -58,38 +66,38 @@ service cloud.firestore {
                data.createdAt is timestamp;
       }
 
-      allow get: if isOwner(userId) || isAdmin() || (userId.startsWith('guest_'));
-      allow list: if isSignedIn() || isAdmin();
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
       
-      allow create: if (isSignedIn() && isOwner(userId) && 
+      allow create: if isSignedIn() && isOwner(userId) && 
                       isValidId(userId) &&
                       isValidUser(incoming()) && 
                       (
                         (incoming().role == 'user' && !(incoming().username.lower() in ['admin', '1234', '12345'])) ||
-                        (incoming().role == 'admin' && (incoming().username.lower() in ['admin', '1234', '12345']))
+                        (incoming().role == 'admin' && (incoming().username.lower() in ['admin', '1234', '12345'])) ||
+                        (incoming().isGuest == true)
                       ) && 
-                      incoming().balance == 10) ||
-                      (userId.startsWith('guest_') && incoming().isGuest == true && incoming().balance == 10);
+                      incoming().balance == 5000;
 
       allow update: if (
         isAdmin() || 
         (isOwner(userId) && (
-          (incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'isOnline', 'lastSeen', 'mustLose', 'isGuest'])) ||
-          ((existing().username.lower() in ['admin', '1234', '12345']) && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'balance', 'isOnline', 'lastSeen', 'mustLose', 'isGuest']))
+          (incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'isOnline', 'lastSeen', 'mustLose', 'isGuest', 'updatedAt', 'history'])) ||
+          ((existing().username.lower() in ['admin', '1234', '12345']) && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'balance', 'isOnline', 'lastSeen', 'mustLose', 'isGuest', 'updatedAt', 'history']))
         ))
       );
     }
 
     // 5. Game State
     match /game/state {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow update: if isAdmin();
       allow create: if isAdmin();
     }
 
     // 5.1 Global Settings
-    match /settings/global {
-      allow read: if isSignedIn();
+    match /settings/{docId} {
+      allow read: if (docId == 'notification' || isSignedIn());
       allow write: if isAdmin();
     }
 
@@ -151,5 +159,6 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidIPLBet(incoming());
       allow update: if isAdmin(); // Admin settles bets
     }
+
   }
 }

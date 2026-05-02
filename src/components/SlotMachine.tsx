@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, Coins, Trophy, X } from 'lucide-react';
-import { useAuth, handleFirestoreError, OperationType } from '../AuthContext';
+import { useAuth } from '../AuthContext';
+import { handleFirestoreError, OperationType } from '../firebase';
 import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 

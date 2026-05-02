@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { History, X, Clock, DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth, OperationType, handleFirestoreError } from '../AuthContext';
+import { useAuth } from '../AuthContext';
+import { handleFirestoreError, OperationType } from '../firebase';
 
 export default function PlayerHistory({ onClose }: { onClose: () => void }) {
   const { user } = useAuth();

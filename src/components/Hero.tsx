@@ -5,29 +5,50 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { Play } from 'lucide-react';
+import { Play, Bell } from 'lucide-react';
 
-export default function Hero({ onPlay }: { onPlay: () => void }) {
+export default function Hero({ onPlay, onBroadcastClick, isAdmin }: { onPlay: () => void; onBroadcastClick?: () => void; isAdmin?: boolean }) {
   return (
     <section id="hero" className="max-w-7xl mx-auto px-6 md:px-10 py-10">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         onClick={onPlay}
-        className="relative h-[450px] rounded-[3rem] overflow-hidden cursor-pointer group shadow-2xl border border-white/5"
+        className="relative h-[450px] cursor-pointer group shadow-2xl"
       >
-        {/* Background Image */}
-        <div className="absolute inset-0">
-          <img 
-            src="https://images.unsplash.com/photo-1518173835740-f5d14111d76a?auto=format&fit=crop&q=80&w=2000" 
-            alt="Multiplayer Spinner" 
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            referrerPolicy="no-referrer"
-          />
-          {/* Overlays */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
-          <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-all"></div>
+        {/* Rounded Backdrop for Content Clipping */}
+        <div className="absolute inset-0 rounded-[3rem] overflow-hidden border border-white/5">
+          {/* Background Image */}
+          <div className="absolute inset-0">
+            <img 
+              src="https://images.unsplash.com/photo-1518173835740-f5d14111d76a?auto=format&fit=crop&q=80&w=2000" 
+              alt="Multiplayer Spinner" 
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              referrerPolicy="no-referrer"
+            />
+            {/* Overlays */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
+            <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-all"></div>
+          </div>
         </div>
+
+        {/* News/Notification Button for Everyone - Clean circle, breaks out of bounds */}
+        <motion.button
+          whileHover={{ scale: 1.1, rotate: 10 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBroadcastClick?.();
+          }}
+          className="absolute -top-6 -right-6 z-30 w-16 h-16 bg-[#22c55e] hover:bg-[#16a34a] border-4 border-black rounded-full flex items-center justify-center transition-all group/notify shadow-[0_10px_30px_rgba(34,197,94,0.6)]"
+          title="Latest News"
+        >
+          <div className="absolute inset-0 rounded-full opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] pointer-events-none"></div>
+          <Bell className="w-7 h-7 text-white animate-bounce" />
+          <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-white rounded-full flex items-center justify-center">
+            <span className="text-[10px] font-bold text-white">NEW</span>
+          </div>
+        </motion.button>
 
         {/* Content */}
         <div className="absolute bottom-12 left-12 right-12 flex flex-col md:flex-row justify-between items-end gap-6">

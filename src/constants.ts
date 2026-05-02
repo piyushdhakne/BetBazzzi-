@@ -5,7 +5,7 @@
 
 import { Game } from './types';
 
-export const INITIAL_BALANCE = 10;
+export const INITIAL_BALANCE = 5000;
 
 export const GAMES: Game[] = [
   {
@@ -30,6 +30,14 @@ export const GAMES: Game[] = [
     description: 'Watch the ball fall. Win or lose it all instantly.',
     category: 'special',
     thumbnail: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&q=80&w=800',
+    minBet: 10,
+  },
+  {
+    id: 'mines',
+    title: 'Mines',
+    description: 'High frequency game. Predict where the mines are hiding and cash out big.',
+    category: 'casino',
+    thumbnail: 'https://images.unsplash.com/photo-1614028674026-a65e31bfd27c?auto=format&fit=crop&q=80&w=800',
     minBet: 10,
   },
   {

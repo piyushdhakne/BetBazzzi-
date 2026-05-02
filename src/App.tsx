@@ -12,9 +12,13 @@ import PlayerHistory from './components/PlayerHistory';
 import IPLBetting from './components/IPLBetting';
 import SuperSpin from './components/SuperSpin';
 import PlinkoDrop from './components/PlinkoDrop';
+import MinesGame from './components/MinesGame';
+import GlobalNotification from './components/GlobalNotification';
+import { BroadcastModal } from './components/BroadcastModal';
+import { NewsModal } from './components/NewsModal';
 import { Chat } from './components/Chat';
 import { TransactionModal } from './components/TransactionModal';
-import { Trophy, Zap, AlertCircle } from 'lucide-react';
+import { Trophy, Zap, AlertCircle, Bell } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 export default function App() {
@@ -22,9 +26,19 @@ export default function App() {
   const [jackpot, setJackpot] = useState(1284592);
   const [showAuth, setShowAuth] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [showNews, setShowNews] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
   const { user, loading } = useAuth();
+
+  const handleBroadcastClick = () => {
+    if (user?.role === 'admin') {
+      setShowBroadcast(true);
+    } else {
+      setShowNews(true);
+    }
+  };
 
   // Simulated live jackpot ticker
   useEffect(() => {
@@ -47,13 +61,19 @@ export default function App() {
       <Navbar 
         onAuthClick={() => setShowAuth(true)} 
         onAdminClick={() => setShowAdmin(true)} 
+        onBroadcastClick={handleBroadcastClick}
         onHistoryClick={() => user ? setShowHistory(true) : setShowAuth(true)}
         onTransactionClick={() => user ? setShowTransactions(true) : setShowAuth(true)}
       />
+      <GlobalNotification />
       <LiveTicker />
       
       <main className="pb-20">
-        <Hero onPlay={() => user ? setActiveGame('multi-spinner') : setShowAuth(true)} />
+        <Hero 
+          onPlay={() => user ? setActiveGame('multi-spinner') : setShowAuth(true)} 
+          onBroadcastClick={handleBroadcastClick}
+          isAdmin={user?.role === 'admin'}
+        />
         
         <GameGrid onPlayGame={(id) => {
           if (!user) {
@@ -95,8 +115,12 @@ export default function App() {
         {activeGame === 'mega-drop' && (
           <PlinkoDrop onClose={() => setActiveGame(null)} />
         )}
+
+        {activeGame === 'mines' && (
+          <MinesGame onClose={() => setActiveGame(null)} />
+        )}
         
-        {activeGame && !['multi-spinner', 'ipl-probability', 'super-spin', 'mega-drop'].includes(activeGame) && (
+        {activeGame && !['multi-spinner', 'ipl-probability', 'super-spin', 'mega-drop', 'mines'].includes(activeGame) && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
@@ -118,6 +142,14 @@ export default function App() {
 
         {showAdmin && user?.role === 'admin' && (
           <AdminPanel onClose={() => setShowAdmin(false)} />
+        )}
+
+        {showBroadcast && user?.role === 'admin' && (
+          <BroadcastModal onClose={() => setShowBroadcast(false)} />
+        )}
+
+        {showNews && (
+          <NewsModal onClose={() => setShowNews(false)} />
         )}
 
         {showHistory && user && (

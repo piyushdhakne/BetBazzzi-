@@ -4,18 +4,19 @@
  */
 
 import React from 'react';
-import { Diamond, Coins, UserCircle, Menu, LogOut, Shield, Wallet, History, Plus } from 'lucide-react';
+import { Diamond, Coins, UserCircle, Menu, LogOut, Shield, Wallet, History, Plus, Bell } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { motion } from 'motion/react';
 
 interface NavbarProps {
   onAuthClick: () => void;
   onAdminClick: () => void;
+  onBroadcastClick: () => void;
   onHistoryClick: () => void;
   onTransactionClick: () => void;
 }
 
-export default function Navbar({ onAuthClick, onAdminClick, onHistoryClick, onTransactionClick }: NavbarProps) {
+export default function Navbar({ onAuthClick, onAdminClick, onBroadcastClick, onHistoryClick, onTransactionClick }: NavbarProps) {
   const { user, logout, promoteToAdmin } = useAuth();
 
   return (
@@ -51,12 +52,21 @@ export default function Navbar({ onAuthClick, onAdminClick, onHistoryClick, onTr
 
                 <div className="flex gap-1 pr-1">
                   {user.role === 'admin' && (
-                    <button 
-                      onClick={onAdminClick}
-                      className="p-2 text-blue-400 hover:bg-white/5 rounded-xl transition-colors"
-                    >
-                      <Shield className="w-5 h-5" />
-                    </button>
+                    <>
+                      <button 
+                        onClick={onBroadcastClick}
+                        className="p-2 text-yellow-500 hover:bg-white/5 rounded-xl transition-colors"
+                        title="Broadcast Notification"
+                      >
+                        <Bell className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={onAdminClick}
+                        className="p-2 text-blue-400 hover:bg-white/5 rounded-xl transition-colors"
+                      >
+                        <Shield className="w-5 h-5" />
+                      </button>
+                    </>
                   )}
                   {user.role !== 'admin' && (
                     <button 

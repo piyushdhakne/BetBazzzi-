@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Play, Trophy, AlertCircle } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth, handleFirestoreError, OperationType } from '../AuthContext';
+import { useAuth } from '../AuthContext';
+import { handleFirestoreError, OperationType } from '../firebase';
 
 const SEGMENTS = [
   { label: '0x', color: '#1a1a1a', mult: 0, weight: 5 },
@@ -251,7 +252,7 @@ export default function SuperSpin({ onClose }: { onClose: () => void }) {
                 <motion.div 
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  key={i} 
+                  key={`super-hist-${i}`} 
                   className="px-3 py-1 rounded flex-shrink-0 text-[10px] font-black border"
                   style={{ backgroundColor: `${h.color}20`, borderColor: h.color, color: h.color }}
                 >

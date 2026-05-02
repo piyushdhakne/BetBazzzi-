@@ -124,12 +124,27 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["riggingLevel"]
+    },
+    "Notification": {
+      "title": "Global Notification",
+      "description": "Marquee message displayed to all users.",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["message", "active", "updatedAt"]
     }
   },
   "firestore": {
     "/settings/global": {
       "schema": "GlobalConfig",
       "description": "Global casino configuration"
+    },
+    "/settings/notification": {
+      "schema": "Notification",
+      "description": "Global marquee notification"
     },
     "/users/{userId}": {
       "schema": "User",

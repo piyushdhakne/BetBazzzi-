@@ -13,7 +13,8 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth, handleFirestoreError, OperationType } from '../AuthContext';
+import { useAuth } from '../AuthContext';
+import { handleFirestoreError, OperationType } from '../firebase';
 import { Loader2, Coins, Trophy, X, Users, Timer, Clock, ChevronRight, Wallet } from 'lucide-react';
 
 const WHEEL_COLORS = ['#ff007b', '#1a1a1a'];
@@ -22,7 +23,6 @@ export default function MultiplayerSpinner({ onClose }: { onClose: () => void })
   const { user, updateBalanceLocally, setMustLose } = useAuth();
   const [gameState, setGameState] = useState<any>(null);
   const [bets, setBets] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [betAmount, setBetAmount] = useState(10);
   const [rotation, setRotation] = useState(0);
@@ -50,20 +50,7 @@ export default function MultiplayerSpinner({ onClose }: { onClose: () => void })
        handleFirestoreError(error, OperationType.GET, 'game/state');
     });
 
-    const historyQuery = user?.role === 'admin' 
-      ? query(collection(db, 'history'), orderBy('timestamp', 'desc'), limit(10))
-      : query(collection(db, 'history'), where('userId', '==', user?.id || ''), orderBy('timestamp', 'desc'), limit(10));
-
-    const historyUnsub = onSnapshot(historyQuery, (snap) => {
-      setHistory(snap.docs.map(d => ({id: d.id, ...d.data()})));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'history');
-    });
-
-    return () => {
-      unsub();
-      historyUnsub();
-    };
+    return unsub;
   }, [isLocalSpinning]);
 
   useEffect(() => {
@@ -219,28 +206,9 @@ export default function MultiplayerSpinner({ onClose }: { onClose: () => void })
                   </div>
                </div>
             </div>
-
-            <div className="arcade-card min-h-[300px]">
-               <h3 className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2">
-                 <Clock className="w-3 h-3" /> LAST ROUNDS
-               </h3>
-               <div className="space-y-3">
-                  {history.map((h, i) => (
-                    <div key={h.id} className="flex justify-between items-center p-3 bg-black/20 rounded-xl border border-white/5">
-                       <div className="flex items-center gap-3">
-                          <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-black italic border ${h.result === 0 ? 'bg-[#ff007b] text-white border-[#ff007b]' : 'bg-transparent text-gray-400 border-white/10'}`}>
-                             {h.result}
-                          </span>
-                          <span className="text-[10px] text-gray-500 font-bold uppercase">{new Date(h.timestamp?.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                       </div>
-                       <ChevronRight className="w-4 h-4 text-gray-700" />
-                    </div>
-                  ))}
-               </div>
-            </div>
          </div>
 
-         <div className="lg:col-span-6 space-y-8 order-1 lg:order-2">
+         <div className="lg:col-span-9 space-y-8 order-1 lg:order-2">
             <div className="text-center space-y-2">
                <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] italic">Winning Number</p>
                <h2 className="text-8xl font-black text-white italic drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]">
@@ -358,33 +326,6 @@ export default function MultiplayerSpinner({ onClose }: { onClose: () => void })
                </AnimatePresence>
             </div>
          </div>
-
-         <div className="lg:col-span-3 space-y-6 order-3">
-            <div className="arcade-card h-full min-h-[400px]">
-               <h3 className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-6 flex items-center gap-2">
-                 <Users className="w-3 h-3" /> ACTIVE BETS
-               </h3>
-               
-               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                  {bets.map((bet, i) => (
-                    <div key={i} className="flex flex-col gap-1 p-4 bg-black/40 rounded-2xl border border-white/5 relative group overflow-hidden">
-                       <div className="absolute top-0 right-0 w-16 h-16 bg-[#ff007b]/5 -mr-8 -mt-8 rounded-full blur-2xl group-hover:bg-[#ff007b]/10 transition-all"></div>
-                       <div className="flex justify-between items-center relative">
-                          <span className="text-xs font-bold text-white">{bet.username}</span>
-                          <span className={`text-[10px] font-black italic px-3 py-1 rounded-lg border ${bet.chosenNumber === 0 ? 'bg-[#ff007b] text-white border-[#ff007b]' : 'bg-transparent text-[#ff007b] border-[#ff007b]/30'}`}>
-                             #{bet.chosenNumber}
-                          </span>
-                       </div>
-                       <div className="flex items-center gap-1 mt-2">
-                          <Coins className="w-3 h-3 text-[#ff007b]" />
-                          <span className="text-lg font-black italic text-[#ff007b]">${bet.amount.toLocaleString()}</span>
-                       </div>
-                    </div>
-                  ))}
-               </div>
-            </div>
-         </div>
-
       </div>
     </div>
   );
